@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.local
+work/
+test-results/
+playwright-report/
+*.keystore
+*.jks
+.env*
+!.env.example
+*.tsbuildinfo

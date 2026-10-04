@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gareeb</string>
+    <string name="title_activity_main">Gareeb</string>
+    <string name="package_name">com.gareeb.money</string>
+    <string name="custom_url_scheme">com.gareeb.money</string>
+</resources>
