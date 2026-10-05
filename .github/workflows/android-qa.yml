@@ -1,17 +1,24 @@
 name: Test released Android APK
 on:
   workflow_dispatch:
-  push:
-    branches: [qa/android-validation]
-    paths:
-      - scripts/android-qa.mjs
-      - .github/workflows/android-qa.yml
+    inputs:
+      release_tag:
+        description: Published APK release to test
+        required: true
+        default: android-build-4
+  workflow_run:
+    workflows: [Build Android APK]
+    types: [completed]
+    branches: [main]
 permissions:
   contents: read
 jobs:
   device-test:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || format('android-build-{0}', github.event.workflow_run.run_number) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,8 +33,12 @@ jobs:
       - name: Download exact released APK and verify checksum
         run: |
           mkdir -p work/android-qa
-          curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-4/gareeb-android.apk -o work/released.apk
-          echo '3643ba928e7b7474cca0e77bf76bbe4fc18d166b08360b7f4a0b4c6e37ac4112  work/released.apk' | sha256sum -c -
+          [[ "$RELEASE_TAG" =~ ^android-build-[0-9]+$ ]] || exit 1
+          cd work
+          curl -fL "https://github.com/SaumendraRaul/Gareeb/releases/download/${RELEASE_TAG}/gareeb-android.apk" -o gareeb-android.apk
+          curl -fL "https://github.com/SaumendraRaul/Gareeb/releases/download/${RELEASE_TAG}/gareeb-android.apk.sha256" -o gareeb-android.apk.sha256
+          sha256sum -c gareeb-android.apk.sha256
+          mv gareeb-android.apk released.apk
       - name: Enable hardware acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

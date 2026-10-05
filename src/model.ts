@@ -517,7 +517,6 @@ export function validateState(input: unknown): State {
         !category(t.category) ||
         !account(t.account) ||
         !date(t.date) ||
-        t.date > day() ||
         !str(t.note, 2000) ||
         !str(t.tags, 200) ||
         typeof t.reviewed !== "boolean" ||
@@ -584,7 +583,7 @@ export function exportCSV(ts: Transaction[]) {
   const cell = (v: unknown) =>
     '"' +
     String(v ?? "")
-      .replace(/^[=+@-]/, "'$&")
+      .replace(/^(?=\s*[=+@-]|[\t\r\n])/, "'")
       .replaceAll('"', '""') +
     '"';
   return [
@@ -663,6 +662,7 @@ export function parseCSV(text: string, s: State): Transaction[] {
       };
       try {
         validateState({ ...s, transactions: [t] });
+        if (t.date > day()) throw new Error('Future-dated import');
       } catch {
         throw new Error(
           `Check row ${i + 2}: use valid dates, types, category IDs and wallet IDs.`,

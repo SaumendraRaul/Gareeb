@@ -2,10 +2,12 @@ import { _android as android } from 'playwright';
 import { expect } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 const out='work/android-qa';
 await mkdir(out,{recursive:true});
-const report={apk:'android-build-4',sha256:'3643ba928e7b7474cca0e77bf76bbe4fc18d166b08360b7f4a0b4c6e37ac4112',checks:[],errors:[]};
+const apk=await readFile('work/released.apk');
+const report={apk:process.env.RELEASE_TAG || 'local',sha256:createHash('sha256').update(apk).digest('hex'),checks:[],errors:[]};
 const [device]=await android.devices();
 assert.ok(device,'Android emulator must be connected');
 device.setDefaultTimeout(45000);
