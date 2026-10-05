@@ -39,6 +39,10 @@ jobs:
           curl -fL "https://github.com/SaumendraRaul/Gareeb/releases/download/${RELEASE_TAG}/gareeb-android.apk.sha256" -o gareeb-android.apk.sha256
           sha256sum -c gareeb-android.apk.sha256
           mv gareeb-android.apk released.apk
+          if [[ "$RELEASE_TAG" != 'android-build-4' ]]; then
+            curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-4/gareeb-android.apk -o previous.apk
+            echo '3643ba928e7b7474cca0e77bf76bbe4fc18d166b08360b7f4a0b4c6e37ac4112  previous.apk' | sha256sum -c -
+          fi
       - name: Enable hardware acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
