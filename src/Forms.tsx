@@ -16,8 +16,10 @@ import {
   type Rule,
 } from "./model";
 import { Field, Icon } from "./ui";
+import { pinShortcut } from "./extras";
+import { feedback } from "./feedback";
 export type Editor =
-  | { type: "transaction"; item?: Transaction }
+  | { type: "transaction"; item?: Transaction; draft?: Transaction }
   | { type: "account"; item?: Account }
   | { type: "bill"; item?: Bill }
   | { type: "goal"; item?: Goal }
@@ -38,16 +40,17 @@ export function EditorForm({
   onDelete?: (id: string) => void;
 }) {
   const item = "item" in editor ? editor.item : undefined;
-  const [kind, setKind] = useState<Kind>(
-    editor.type === "transaction" ? editor.item?.kind || "expense" : "expense",
-  );
+  const draft =
+    editor.type === "transaction" ? editor.item || editor.draft : undefined;
+  const [kind, setKind] = useState<Kind>(draft?.kind || "expense");
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState(
     editor.type === "transaction" ? editor.item?.receipt : undefined,
   );
   const [busy, setBusy] = useState(false);
   const [category, setCategory] = useState(
-    "category" in (item || {}) ? (item as Transaction).category : "food",
+    draft?.category ||
+      ("category" in (item || {}) ? (item as Transaction).category : "food"),
   );
   const accounts = (
     <>
@@ -129,6 +132,7 @@ export function EditorForm({
           next.transactions = item
             ? s.transactions.map((x) => (x.id === id ? t : x))
             : [t, ...s.transactions];
+          if (f.get("shortcut")) next = pinShortcut(next, t);
           message = item
             ? "Transaction updated."
             : "Transaction added. Nicely tracked.";
@@ -235,6 +239,7 @@ export function EditorForm({
       onSave(next, message);
     } catch (err) {
       setError((err as Error).message);
+      void feedback("error");
     }
   }
   async function attach(file?: File) {
@@ -291,7 +296,7 @@ export function EditorForm({
               max="10000000000"
               step="0.01"
               placeholder="0.00"
-              defaultValue={editor.item ? editor.item.amount / 100 : ""}
+              defaultValue={draft ? draft.amount / 100 : ""}
               required
             />
           </div>
@@ -310,7 +315,7 @@ export function EditorForm({
                     ? "Salary, freelance work…"
                     : "Move money between wallets"
               }
-              defaultValue={editor.item?.title}
+              defaultValue={draft?.title}
               required
               onBlur={(e) => {
                 if (!item) {
@@ -329,7 +334,7 @@ export function EditorForm({
             <Field label={kind === "transfer" ? "From wallet" : "Wallet"}>
               <select
                 name="account"
-                defaultValue={editor.item?.account || s.accounts[0].id}
+                defaultValue={draft?.account || s.accounts[0].id}
               >
                 {accounts}
               </select>
@@ -338,7 +343,7 @@ export function EditorForm({
               <Field label="To wallet">
                 <select
                   name="toAccount"
-                  defaultValue={editor.item?.toAccount || s.accounts[1]?.id}
+                  defaultValue={draft?.toAccount || s.accounts[1]?.id}
                 >
                   {accounts}
                 </select>
@@ -349,7 +354,7 @@ export function EditorForm({
                 name="date"
                 type="date"
                 max={day()}
-                defaultValue={editor.item?.date || day()}
+                defaultValue={draft?.date || day()}
                 required
               />
             </Field>
@@ -358,7 +363,7 @@ export function EditorForm({
                 name="tags"
                 maxLength={200}
                 placeholder="weekend, essential"
-                defaultValue={editor.item?.tags}
+                defaultValue={draft?.tags}
               />
             </Field>
           </div>
@@ -367,9 +372,19 @@ export function EditorForm({
               name="note"
               maxLength={2000}
               placeholder="The little details"
-              defaultValue={editor.item?.note}
+              defaultValue={draft?.note}
             />
           </Field>
+          <label className="check-label shortcut-option">
+            <input type="checkbox" name="shortcut" />
+            <span>
+              Save as a shortcut
+              <small>
+                Reuse these details next time. Nothing is added automatically.
+              </small>
+            </span>
+            <Icon name="Sparkles" size={18} />
+          </label>
           <div className="receipt-area">
             {receipt ? (
               <>

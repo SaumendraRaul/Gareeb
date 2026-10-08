@@ -24,6 +24,12 @@ Every push to `main` or manual workflow dispatch runs the tests and builds an AP
 - Dark mode, hide balances, accessible dialogs, responsive navigation, Android back handling.
 - CSV import preview, duplicate suppression, CSV export, full backup and restore, undo.
 - Clear demo mode and empty-state onboarding.
+- Reusable transaction shortcuts (up to 24) and duplicate-for-today, with review before saving.
+- Interactive monthly spending calendar with daily transaction filtering.
+- Seven-day spending recap, merchant totals, and days without recorded expenses.
+- Annual and monthly-equivalent recurring bill costs.
+- Native Android haptics for taps, successful saves, and errors, with an off switch and preview.
+- Animated page transitions, tactile navigation, swipe-dismiss sheets, and reduced-motion controls that honour the system setting.
 
 ## Privacy and limits
 

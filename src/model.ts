@@ -57,6 +57,8 @@ export type State = {
     theme: "light" | "dark";
     monthlyIncome: number;
     reserve: number;
+    haptics?: boolean;
+    reducedMotion?: boolean;
   };
   transactions: Transaction[];
   accounts: Account[];
@@ -65,6 +67,7 @@ export type State = {
   bills: Bill[];
   splits: Split[];
   rules: Rule[];
+  shortcuts?: Transaction[];
 };
 export const categories = [
   {
@@ -475,7 +478,11 @@ export function validateState(input: unknown): State {
     !num(s.settings.monthlyIncome) ||
     s.settings.monthlyIncome < 0 ||
     !num(s.settings.reserve) ||
-    s.settings.reserve < 0
+    s.settings.reserve < 0 ||
+    (s.settings.haptics !== undefined &&
+      typeof s.settings.haptics !== "boolean") ||
+    (s.settings.reducedMotion !== undefined &&
+      typeof s.settings.reducedMotion !== "boolean")
   )
     throw new Error("Invalid backup settings.");
   for (const key of [
@@ -497,6 +504,14 @@ export function validateState(input: unknown): State {
   }
   const account = (x: unknown) => s.accounts.some((a) => a.id === x);
   if (
+    s.shortcuts !== undefined &&
+    (!Array.isArray(s.shortcuts) ||
+      s.shortcuts.length > 24 ||
+      s.shortcuts.some((t) => !t || !str(t.id, 100)) ||
+      new Set(s.shortcuts.map((t) => t.id)).size !== s.shortcuts.length)
+  )
+    throw new Error("Invalid shortcuts in backup.");
+  if (
     !s.accounts.length ||
     s.accounts.some(
       (a) =>
@@ -508,7 +523,7 @@ export function validateState(input: unknown): State {
   )
     throw new Error("Invalid accounts.");
   if (
-    s.transactions.some(
+    [...s.transactions, ...(s.shortcuts || [])].some(
       (t) =>
         !["expense", "income", "transfer"].includes(t.kind) ||
         !pos(t.amount) ||
@@ -662,7 +677,7 @@ export function parseCSV(text: string, s: State): Transaction[] {
       };
       try {
         validateState({ ...s, transactions: [t] });
-        if (t.date > day()) throw new Error('Future-dated import');
+        if (t.date > day()) throw new Error("Future-dated import");
       } catch {
         throw new Error(
           `Check row ${i + 2}: use valid dates, types, category IDs and wallet IDs.`,

@@ -27,6 +27,14 @@ import { download, loadState, persist } from "./storage";
 import { Empty, Field, Icon, Logo, Modal, Progress, Section } from "./ui";
 import { Daily, Donut, Trend, IncomeSpark } from "./charts";
 import { EditorForm, type Editor } from "./Forms";
+import {
+  QuickEntries,
+  SpendCalendar,
+  WeekReview,
+  RecurringCosts,
+  ExperienceSettings,
+} from "./Features";
+import { configureHaptics, feedback } from "./feedback";
 type Tab = "home" | "activity" | "insights" | "plan" | "wallets" | "settings";
 type Confirmation = {
   title: string;
@@ -57,6 +65,8 @@ export default function App() {
   const [catFilter, setCatFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState(false);
+  const [dateFilter, setDateFilter] = useState("");
+  const [activityView, setActivityView] = useState("list");
   const [planTab, setPlanTab] = useState("Budgets");
   const [showAlerts, setShowAlerts] = useState(false);
   const [importPreview, setImportPreview] = useState<{
@@ -83,6 +93,15 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = s?.settings.theme || "light";
   }, [s?.settings.theme]);
+  useEffect(() => {
+    configureHaptics(s?.settings.haptics !== false);
+    document.documentElement.dataset.motion = s?.settings.reducedMotion
+      ? "reduced"
+      : "full";
+  }, [s?.settings.haptics, s?.settings.reducedMotion]);
+  useEffect(() => {
+    setDateFilter("");
+  }, [selected]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => {
@@ -118,9 +137,12 @@ export default function App() {
       setUndo(canUndo ? s : null);
       setS(next);
       setNotice(message);
+      void feedback("success");
       close();
     } catch (e) {
       setNotice("Could not save: " + (e as Error).message);
+      configureHaptics(s?.settings.haptics !== false);
+      void feedback("error");
     } finally {
       lock.current = false;
       setSaving(false);
@@ -152,10 +174,11 @@ export default function App() {
       entity === "account" &&
       (s.accounts.length === 1 ||
         s.transactions.some((t) => t.account === id || t.toAccount === id) ||
-        s.bills.some((b) => b.account === id))
+        s.bills.some((b) => b.account === id) ||
+        (s.shortcuts || []).some((t) => t.account === id || t.toAccount === id))
     ) {
       setNotice(
-        "Keep at least one wallet. Wallets used by transactions or bills cannot be deleted.",
+        "Keep at least one wallet. Wallets used by transactions, bills or shortcuts cannot be deleted.",
       );
       return;
     }
@@ -470,7 +493,28 @@ export default function App() {
       />
     );
   return (
-    <div className="app-shell" aria-busy={saving}>
+    <div
+      className="app-shell"
+      aria-busy={saving}
+      onClickCapture={(e) => {
+        const button = (e.target as Element).closest<HTMLButtonElement>(
+          "button",
+        );
+        if (
+          button &&
+          !button.disabled &&
+          (button.type !== "submit" || !button.form)
+        )
+          void feedback();
+      }}
+      onChangeCapture={(e) => {
+        if (
+          (e.target as HTMLInputElement).type === "checkbox" ||
+          (e.target as Element).tagName === "SELECT"
+        )
+          void feedback();
+      }}
+    >
       <aside className="sidebar">
         <Logo />
         <span className="sidebar-caption">MAKE ROOM FOR MORE.</span>
@@ -555,7 +599,7 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main className="content">
+        <main className="content" key={tab}>
           {s.demo && (
             <div className="demo-banner">
               <span>
@@ -651,7 +695,12 @@ export default function App() {
                   <p>
                     Total balance <span className="asof">· today</span>
                   </p>
-                  <h2>{cash(funds.total)}</h2>
+                  <h2
+                    key={String(funds.total) + hide}
+                    className="balance-amount"
+                  >
+                    {cash(funds.total)}
+                  </h2>
                   <div className="balance-bottom">
                     <div>
                       <span>After bills & reserve</span>
@@ -707,6 +756,31 @@ export default function App() {
                   </span>
                 </div>
               </div>
+              <QuickEntries
+                s={s}
+                cash={cash}
+                onAdd={() => add()}
+                onUse={(t) =>
+                  setEditor({
+                    type: "transaction",
+                    draft: {
+                      ...t,
+                      id: crypto.randomUUID(),
+                      date: day(),
+                      receipt: undefined,
+                    },
+                  })
+                }
+                onRemove={(id) =>
+                  void save(
+                    {
+                      ...s,
+                      shortcuts: (s.shortcuts || []).filter((t) => t.id !== id),
+                    },
+                    "Shortcut removed.",
+                  )
+                }
+              />
               <div className="insight-strip">
                 <span className="insight-icon">
                   <Icon name="Sparkles" size={21} />
@@ -921,6 +995,37 @@ export default function App() {
           )}
           {tab === "activity" && (
             <>
+              <div
+                className="activity-view segmented"
+                aria-label="Activity view"
+              >
+                {["list", "calendar"].map((view) => (
+                  <button
+                    key={view}
+                    className={activityView === view ? "selected" : ""}
+                    aria-pressed={activityView === view}
+                    onClick={() => {
+                      setActivityView(view);
+                      setDateFilter("");
+                    }}
+                  >
+                    <Icon
+                      name={view === "list" ? "Menu" : "CalendarDays"}
+                      size={17}
+                    />
+                    {view === "list" ? "Timeline" : "Calendar"}
+                  </button>
+                ))}
+              </div>
+              {activityView === "calendar" && (
+                <SpendCalendar
+                  s={s}
+                  selected={selected}
+                  selectedDay={dateFilter}
+                  cash={cash}
+                  onSelect={setDateFilter}
+                />
+              )}
               <div className="activity-stats">
                 <span>
                   Income <b className="positive">+{cash(sums.income)}</b>
@@ -933,7 +1038,11 @@ export default function App() {
                 </span>
               </div>
               <Section
-                title="Every transaction"
+                title={
+                  dateFilter
+                    ? `Transactions on ${new Date(dateFilter + "T12:00:00").toLocaleDateString("en", { day: "numeric", month: "short" })}`
+                    : "Every transaction"
+                }
                 sub={`${ts.length} entries in ${monthTitle}`}
                 action={
                   <button
@@ -1022,6 +1131,7 @@ export default function App() {
                 {transactions(
                   sorted.filter(
                     (t) =>
+                      (!dateFilter || t.date === dateFilter) &&
                       (typeFilter === "all" || t.kind === typeFilter) &&
                       (catFilter === "all" || t.category === catFilter) &&
                       (accountFilter === "all" ||
@@ -1042,6 +1152,7 @@ export default function App() {
           )}
           {tab === "insights" && (
             <>
+              <WeekReview s={s} cash={cash} />
               <div className="metric-grid">
                 <div className="mini-metric">
                   <span>Saved this month</span>
@@ -1441,6 +1552,7 @@ export default function App() {
                       recurring payments
                     </small>
                   </div>
+                  <RecurringCosts s={s} cash={cash} />
                   {[...s.bills]
                     .sort((a, b) => a.date.localeCompare(b.date))
                     .map((b) => (
@@ -1815,6 +1927,11 @@ export default function App() {
                         : "Switch to light"}
                     </button>
                   </div>
+                  <ExperienceSettings
+                    s={s}
+                    onSave={(next, message) => void save(next, message, false)}
+                    onNotice={setNotice}
+                  />
                   <button className="primary" type="submit">
                     Save preferences
                   </button>
@@ -1961,7 +2078,7 @@ export default function App() {
               <Icon name="Sprout" size={15} /> A little mindful. A lot more
               free.
             </span>
-            <span>Gareeb · v1.0</span>
+            <span>Gareeb · v1.1</span>
           </footer>
         </main>
       </div>
@@ -2011,7 +2128,31 @@ export default function App() {
           }
           onClose={close}
         >
+          {editor.type === "transaction" && editor.item && (
+            <button
+              className="secondary duplicate-button"
+              onClick={() =>
+                setEditor({
+                  type: "transaction",
+                  draft: {
+                    ...editor.item!,
+                    id: crypto.randomUUID(),
+                    date: day(),
+                    receipt: undefined,
+                  },
+                })
+              }
+            >
+              <Icon name="Repeat2" size={16} />
+              Duplicate for today
+            </button>
+          )}
           <EditorForm
+            key={
+              editor.type === "transaction"
+                ? editor.item?.id || editor.draft?.id || "new"
+                : editor.type
+            }
             editor={editor}
             s={s}
             onSave={(next, message) => void save(next, message)}

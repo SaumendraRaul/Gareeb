@@ -1,6 +1,6 @@
 {
   "name": "gareeb",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "@capacitor/app": "^8.0.0",
     "@capacitor/core": "^8.5.2",
     "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/haptics": "^8.0.0",
     "@capacitor/preferences": "^8.0.0",
     "@capacitor/share": "^8.0.0",
     "@fontsource/dm-sans": "^5.2.8",

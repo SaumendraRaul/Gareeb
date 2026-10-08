@@ -2,10 +2,13 @@ import {
   useEffect,
   useRef,
   useId,
+  useState,
+  useCallback,
   isValidElement,
   cloneElement,
   type ReactNode,
 } from "react";
+import { feedback } from "./feedback";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -217,19 +220,35 @@ export function Modal({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef<number | null>(null);
+  const offset = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [exiting, setExiting] = useState(false);
+  const dismiss = useCallback(() => {
+    if (timer.current) return;
+    void feedback();
+    setExiting(true);
+    const reduced =
+      document.documentElement.dataset.motion === "reduced" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    timer.current = setTimeout(onClose, reduced ? 0 : 160);
+  }, [onClose]);
+  useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement;
     const bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     ref.current?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") dismiss();
       if (e.key === "Tab") {
         const els = Array.from(
           ref.current?.querySelectorAll<HTMLElement>(
             'button,input,select,textarea,[tabindex="0"]',
           ) || [],
-        ).filter((e) => !e.hasAttribute("disabled"));
+        ).filter(
+          (e) => !e.hasAttribute("disabled") && e.getClientRects().length > 0,
+        );
         const first = els[0],
           last = els[els.length - 1];
         if (
@@ -251,12 +270,12 @@ export function Modal({
       document.removeEventListener("keydown", key);
       prev?.focus();
     };
-  }, [onClose]);
+  }, [dismiss]);
   return (
     <div
-      className="modal-backdrop"
+      className={`modal-backdrop ${exiting ? "is-exiting" : ""}`}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div
@@ -267,7 +286,44 @@ export function Modal({
         tabIndex={-1}
         ref={ref}
       >
-        <div className="sheet-handle" />
+        <button
+          type="button"
+          className="sheet-handle"
+          aria-label="Close sheet"
+          onClick={() => {
+            if (offset.current < 5) dismiss();
+          }}
+          onPointerDown={(e) => {
+            drag.current = e.clientY;
+            offset.current = 0;
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            if (drag.current === null) return;
+            offset.current = Math.max(
+              0,
+              Math.min(260, e.clientY - drag.current),
+            );
+            ref.current?.style.setProperty(
+              "--sheet-drag",
+              `${offset.current}px`,
+            );
+          }}
+          onPointerUp={(e) => {
+            if (drag.current === null) return;
+            drag.current = null;
+            e.currentTarget.releasePointerCapture(e.pointerId);
+            if (offset.current > 90) dismiss();
+            else ref.current?.style.setProperty("--sheet-drag", "0px");
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            offset.current = 0;
+            ref.current?.style.setProperty("--sheet-drag", "0px");
+          }}
+        >
+          <span />
+        </button>
         <header>
           <div>
             <span className="eyebrow">A LITTLE MORE CLARITY</span>
@@ -275,7 +331,7 @@ export function Modal({
           </div>
           <button
             className="icon-button"
-            onClick={onClose}
+            onClick={dismiss}
             aria-label="Close dialog"
           >
             <Icon name="X" />
