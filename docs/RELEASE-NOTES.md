@@ -1,21 +1,23 @@
-Gareeb is a private, offline expense and money-planning app with a mobile-first ivory-and-emerald interface.
+Gareeb v2.0 — good times, clear tabs.
 
-New in v1.1.2: a custom folded-pocket and gold-coin emblem, a calmer lowercase wordmark, and matching launcher, themed Android icon, favicon, and launch-screen artwork. The mobile header is more compact and the logo adapts to light and dark themes. The name and your data stay the same. Build 7 or newer can be updated in place; the older-build migration instructions below still apply.
+Download **gareeb-android.apk** below. Android 7 or later. Build 7 and newer update in place with the same signing identity; your records stay compatible.
 
-Download **gareeb-android.apk** below on your Android phone (Android 7 or later). Allow installation from your browser when Android asks, then open Gareeb. Start fresh or explore the labelled sample data.
+## New in v2
 
-Includes expense/income/transfers, multiple wallets, category budgets, savings goals, recurring bills, IOUs, cash-flow and category analytics, transaction search and filters, receipt attachments, merchant rules, dark mode, CSV import/export and full JSON backups. No signup or API keys required.
+- **Together groups:** trips, households and shared meals with 2–30 members, exact equal splits, custom amounts, different payers, partial settlement history, editable expenses, group budgets, archiving and shareable text summaries. Group records stay on this device and are included in full backups. They do not automatically change wallet balances or send money.
+- **Quick entry:** describe a simple expense such as “180 lunch yesterday cash” and review the prefilled entry. Recent merchants make repeat purchases quicker. Parsing runs locally; it is not a general-purpose AI or bank-message importer.
+- **Weekly and monthly budgets:** optional positive rollover from a chosen starting period, with overspending absorbed before future carry. Editing a limit recalculates that budget's history.
+- **Custom categories:** icons, colours and subcategory labels used throughout entry, filtering, charts, rules and budgets. Subcategories keep independent totals.
+- **Where did it go?** A monthly money story with category changes and drill-down to the transactions behind them. Current partial months are clearly distinguished from the previous full month.
+- **Private Android bill reminders:** opt-in local notifications around 9 AM for the next occurrence of up to 64 active bills. No bill names or amounts appear in notification text. Android can delay delivery. Open the app periodically to refresh future occurrences; editing, paying, snoozing or skipping a bill refreshes its schedule. No automatic charges or cancellations.
+- **Device app lock:** fingerprint, face or device credential verification using Android's authentication screen. Requires a device screen lock. Enabled lock hides screenshots and recent-app previews. Lock preference is device-specific and is not restored from a backup.
+- **Encrypted backups:** optional passphrase-protected exports using AES-256-GCM with PBKDF2-SHA256 (310,000 iterations). Keep the passphrase separately; it cannot be recovered. Plain JSON backups remain available. App-lock protection does not encrypt the underlying on-device Preferences database.
+- Optional gentle Gareeb humour. Existing haptics, reduced motion, dark mode, receipts, CSV imports, calendars and shortcuts remain available.
 
-New in v1.1: reusable transaction shortcuts, duplicate-for-today, an interactive spending calendar, a seven-day spending recap, and annual recurring-cost summaries. Every shortcut opens a reviewable form before adding a transaction.
+## Updating older builds
 
-The interface now includes smoother page and sheet transitions, tactile navigation, swipe-to-dismiss sheets, and native Android haptics for taps and save/error feedback. Settings includes a haptics switch, a preview pulse, and a reduced-motion option; the system reduced-motion preference is also honoured. Haptic strength depends on your phone's hardware and system settings.
+Build 6 or earlier used temporary signing keys. Export a full backup and save the JSON outside Gareeb, verify it exists, then uninstall the old app. Install this APK, finish initial setup and restore the backup. Never uninstall before saving your backup.
 
-Existing records and backups remain compatible. A separate Android 15 emulator workflow checks installation, updates, persistence, native haptic calls, and backup sharing, retaining its report and screenshots.
+This is a preview APK, not a Play Store release. The published APK uses the durable signing identity introduced in build 7. Source, tests, checksum and build logs are available in this repository.
 
-**Updating from build 6 or earlier:** the older signing keys were temporary, so Android cannot install this release over those versions. First use Settings → Export full backup and save the JSON outside Gareeb. Verify that the file exists before uninstalling the old app. Install this APK, finish the initial setup, then use Settings → Restore a backup. Never uninstall before saving your backup.
-
-This is a **preview APK**, not a Play Store production release. From build 7, the signing identity is stored in encrypted repository secrets and verified on every published build so future updates use the same certificate.
-
-Data stays on the device. There is no live bank sync, cloud sync, automatic subscription cancellation, OCR, or background push reminder service. Bills and IOU settlements are manually recorded. Goals track savings progress separately from wallets. All wallets use the currency selected during setup.
-
-The SHA-256 checksum is included with this release. The workflow runs calculation tests, mobile and desktop browser checks, and the Android build before publishing.
+No signup, financial-data server, bank sync, multi-user collaboration, cloud sync, receipt OCR, automatic SMS access or currency conversion. Groups are a local ledger that you can share as a summary. Home-screen widgets, receipt scanning and optional sync remain follow-up work.

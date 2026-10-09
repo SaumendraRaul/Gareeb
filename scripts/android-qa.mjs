@@ -46,17 +46,30 @@ async function launch() {
   // The old debugging socket can outlive force-stop. Match the current app
   // process rather than accidentally reconnecting to its closing WebView.
   let view;
-  await expect.poll(async () => {
-    const pid = Number((await device.shell(`pidof ${pkg}`)).toString().trim());
-    view = device.webViews().find((candidate) => candidate.pkg() === pkg && candidate.pid() === pid);
-    return Boolean(view);
-  }, { timeout: 45000, message: "Wait for the relaunched app's WebView" }).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const pid = Number(
+          (await device.shell(`pidof ${pkg}`)).toString().trim(),
+        );
+        view = device
+          .webViews()
+          .find(
+            (candidate) => candidate.pkg() === pkg && candidate.pid() === pid,
+          );
+        return Boolean(view);
+      },
+      { timeout: 45000, message: "Wait for the relaunched app's WebView" },
+    )
+    .toBe(true);
   page = await view.page();
   page.setDefaultTimeout(20000);
   page.on("pageerror", (e) => report.errors.push(e.message));
   // Native storage and first WebView rendering can exceed the matcher default
   // on a cold emulator. Wait for the actual ready UI, not a fixed sleep.
-  await expect(page.locator(".welcome-wrap, .app-shell")).toBeVisible({ timeout: 30000 });
+  await expect(
+    page.locator(".welcome-wrap, .app-shell, .privacy-screen"),
+  ).toBeVisible({ timeout: 30000 });
   return page;
 }
 async function nav(name) {
@@ -107,7 +120,7 @@ try {
       await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
     },
   );
-  if (previous)
+  if (previous && process.env.PREVIOUS_STABLE !== "true")
     await check(
       "Legacy backup restores into the durable-signed APK",
       async () => {
@@ -170,10 +183,24 @@ try {
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-        await expect(page.locator(".page-footer")).toContainText("v1.1");
+        await expect(page.locator(".page-footer")).toContainText("v2.0");
         await expect(
           page.getByRole("region", { name: "Transaction shortcuts" }),
         ).toBeVisible();
+      },
+    );
+  if (previous && process.env.PREVIOUS_STABLE === "true")
+    await check(
+      "V1 to V2 update preserves real saved records without uninstall",
+      async () => {
+        await device.shell("am force-stop " + pkg);
+        await install(apk, "updated");
+        await launch();
+        await expect(
+          page.getByRole("heading", { name: "Hey Android QA" }),
+        ).toBeVisible();
+        await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+        await expect(page.locator(".page-footer")).toContainText("v2.0");
       },
     );
   await check("Stable-signed replacement preserves saved records", async () => {
@@ -184,7 +211,7 @@ try {
       page.getByRole("heading", { name: "Hey Android QA" }),
     ).toBeVisible();
     await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-    await expect(page.locator(".page-footer")).toContainText("v1.1");
+    await expect(page.locator(".page-footer")).toContainText("v2.0");
   });
   await check(
     "Force-stop and offline relaunch retain the saved expense",
@@ -197,7 +224,7 @@ try {
         page.getByRole("heading", { name: "Hey Android QA" }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /Android coffee/ }),
+        page.locator(".transaction").filter({ hasText: "Android coffee" }),
       ).toBeVisible();
       await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
       await device.screenshot({ path: out + "/02-offline-relaunch.png" });
@@ -255,7 +282,8 @@ try {
     async () => {
       await nav("Overview");
       await page
-        .getByRole("button", { name: /Android coffee/ })
+        .locator(".transaction")
+        .filter({ hasText: "Android coffee" })
         .first()
         .click();
       await page.getByLabel("Save as a shortcut", { exact: false }).check();
@@ -358,6 +386,214 @@ try {
         .toContain(filename);
       await device.screenshot({ path: out + "/04-share-sheet.png" });
       await device.shell("input keyevent 4");
+    },
+  );
+  await check(
+    "Shared group splits persist across a native restart without changing wallet totals",
+    async () => {
+      await nav("Plan");
+      await page.getByRole("button", { name: "Together", exact: true }).click();
+      await page
+        .getByRole("button", { name: "New group", exact: true })
+        .click();
+      await page.getByLabel("Group name", { exact: true }).fill("Android trip");
+      await page
+        .getByLabel("Members (comma separated)", { exact: true })
+        .fill("You, Aman, Priya");
+      await page
+        .getByRole("button", { name: "Save group", exact: true })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Add shared expense", exact: true })
+        .click();
+      await page.getByLabel("Shared expense title").fill("Dinner together");
+      await page.getByLabel("Total shared amount").fill("100");
+      await page
+        .getByRole("button", { name: "Save shared expense", exact: true })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Record payment", exact: true })
+        .first()
+        .click();
+      await page.getByLabel("Payment amount").fill("10");
+      await page
+        .getByRole("button", { name: "Confirm payment received" })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await device.shell("am force-stop " + pkg);
+      await launch();
+      await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+      await nav("Plan");
+      await page.getByRole("button", { name: "Together", exact: true }).click();
+      await page
+        .locator(".group-card")
+        .filter({ hasText: "Android trip" })
+        .click();
+      await expect(page.locator(".group-history")).toHaveCount(2);
+      await expect(page.locator(".member-balances")).toContainText("23.33");
+      await device.screenshot({ path: out + "/07-shared-group.png" });
+    },
+  );
+  await check(
+    "Private device reminders schedule and cancel through the native plugin",
+    async () => {
+      await nav("Plan");
+      await page.getByRole("button", { name: "Bills", exact: true }).click();
+      await page.getByRole("button", { name: "Add bill", exact: true }).click();
+      await page.getByLabel("Bill or subscription").fill("Private test bill");
+      await page.getByLabel("Amount", { exact: true }).fill("99");
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      await page
+        .getByLabel("Next due date")
+        .fill(tomorrow.toISOString().slice(0, 10));
+      await page
+        .getByRole("button", { name: "Save bill", exact: true })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await device.shell(
+        "pm grant " + pkg + " android.permission.POST_NOTIFICATIONS",
+      );
+      await page
+        .getByRole("button", { name: "Open settings", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Enable reminders", exact: true })
+        .click();
+      await expect(page.locator(".privacy-settings")).toContainText(
+        "1 private bill reminders scheduled.",
+      );
+      const pending = await page.evaluate(() =>
+        window.Capacitor.Plugins.LocalNotifications.getPending(),
+      );
+      assert.equal(pending.notifications.length, 1);
+      assert.equal(
+        pending.notifications[0].title,
+        "A little reminder from Gareeb",
+      );
+      await page
+        .getByRole("button", { name: "Disable reminders", exact: true })
+        .click();
+      await expect(page.locator(".privacy-settings")).toContainText(
+        "Bill reminders disabled.",
+      );
+      assert.equal(
+        (
+          await page.evaluate(() =>
+            window.Capacitor.Plugins.LocalNotifications.getPending(),
+          )
+        ).notifications.length,
+        0,
+      );
+    },
+  );
+  await check(
+    "Native privacy plugin detects screen-lock availability without enabling a lock",
+    async () => {
+      assert.equal(
+        await page.evaluate(() =>
+          window.Capacitor.isPluginAvailable("GareebPrivacy"),
+        ),
+        true,
+      );
+      const status = await page.evaluate(() =>
+        window.Capacitor.Plugins.GareebPrivacy.status(),
+      );
+      assert.equal(status.enabled, false);
+      assert.equal(typeof status.available, "boolean");
+    },
+  );
+  await check(
+    "Device credential lock blocks reopening, stays locked on cancel, and unlocks after verification",
+    async () => {
+      // This PIN exists only on the disposable CI emulator.
+      await device.shell("locksettings set-pin 2468");
+      async function enterTestPin() {
+        let xml = "";
+        await expect
+          .poll(
+            async () => {
+              await device.shell("uiautomator dump /sdcard/qa-auth.xml");
+              xml = (await device.shell("cat /sdcard/qa-auth.xml")).toString();
+              return /class="android.widget.EditText"/.test(xml);
+            },
+            { timeout: 30000 },
+          )
+          .toBe(true);
+        const node = xml.match(
+          /<node\b[^>]*class="android.widget.EditText"[^>]*>/,
+        )?.[0];
+        const bounds = node?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+        assert.ok(bounds, "Device credential input must be visible");
+        await device.shell(
+          `input tap ${Math.round((Number(bounds[1]) + Number(bounds[3])) / 2)} ${Math.round((Number(bounds[2]) + Number(bounds[4])) / 2)}`,
+        );
+        await device.shell("input text 2468");
+        await device.shell("input keyevent 66");
+      }
+      await page.reload();
+      await expect(page.locator(".app-shell")).toBeVisible({ timeout: 30000 });
+      await page
+        .getByRole("button", { name: "Open settings", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Enable lock", exact: true })
+        .click();
+      await enterTestPin();
+      await expect(page.locator(".privacy-settings")).toContainText(
+        "App lock enabled",
+        { timeout: 20000 },
+      );
+      await device.shell("am force-stop " + pkg);
+      await launch();
+      await expect(
+        page.getByRole("button", { name: "Unlock Gareeb", exact: true }),
+      ).toBeVisible();
+      await expect(page.locator(".app-shell")).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Unlock Gareeb", exact: true })
+        .click();
+      await expect
+        .poll(
+          async () => {
+            await device.shell("uiautomator dump /sdcard/qa-auth.xml");
+            return (await device.shell("cat /sdcard/qa-auth.xml")).toString();
+          },
+          { timeout: 30000 },
+        )
+        .toContain('class="android.widget.EditText"');
+      await device.shell("input keyevent 4");
+      await expect(
+        page.getByRole("button", { name: "Unlock Gareeb", exact: true }),
+      ).toBeEnabled({ timeout: 20000 });
+      await expect(page.locator(".app-shell")).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Unlock Gareeb", exact: true })
+        .click();
+      await enterTestPin();
+      await expect(page.locator(".app-shell")).toBeVisible({ timeout: 30000 });
+      await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+      await page
+        .getByRole("button", { name: "Open settings", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Disable lock", exact: true })
+        .click();
+      await enterTestPin();
+      await expect
+        .poll(
+          async () =>
+            (
+              await page.evaluate(() =>
+                window.Capacitor.Plugins.GareebPrivacy.status(),
+              )
+            ).enabled,
+          { timeout: 20000 },
+        )
+        .toBe(false);
+      await device.shell("locksettings clear --old 2468");
     },
   );
   await check("No uncaught WebView JavaScript errors", async () =>

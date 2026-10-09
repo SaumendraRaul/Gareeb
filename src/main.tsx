@@ -9,6 +9,7 @@ import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
 import "@fontsource/manrope/latin-800.css";
 import App from "./App";
+import { PrivacyGate } from "./Privacy";
 import "./style.css";
 class Boundary extends React.Component<
   { children: React.ReactNode },
@@ -36,7 +37,9 @@ class Boundary extends React.Component<
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <Boundary>
-      <App />
+      <PrivacyGate>
+        <App />
+      </PrivacyGate>
     </Boundary>
   </React.StrictMode>,
 );

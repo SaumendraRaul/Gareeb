@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
-  categories,
+  allCategories,
   cents,
   day,
   uid,
@@ -39,6 +39,7 @@ export function EditorForm({
   onSave: (s: State, message: string) => void;
   onDelete?: (id: string) => void;
 }) {
+  const categories = allCategories(s);
   const item = "item" in editor ? editor.item : undefined;
   const draft =
     editor.type === "transaction" ? editor.item || editor.draft : undefined;
@@ -135,7 +136,11 @@ export function EditorForm({
           if (f.get("shortcut")) next = pinShortcut(next, t);
           message = item
             ? "Transaction updated."
-            : "Transaction added. Nicely tracked.";
+            : s.settings.humour && kind === "expense"
+              ? /swiggy|zomato/i.test(t.title)
+                ? "Chef delivery strikes again. Expense saved."
+                : "Paisa located. Expense saved."
+              : "Transaction added. Nicely tracked.";
           break;
         }
         case "account": {
@@ -159,7 +164,14 @@ export function EditorForm({
             throw new Error(
               "This category already has a budget. Edit that budget instead.",
             );
-          const b: Budget = { id, category, limit: cash("limit") };
+          const b: Budget = {
+            id,
+            category,
+            limit: cash("limit"),
+            period: get("period") as Budget["period"],
+            rollover: f.get("rollover") === "on",
+            startDate: get("startDate"),
+          };
           next.budgets = item
             ? s.budgets.map((x) => (x.id === id ? b : x))
             : [...s.budgets, b];
@@ -455,10 +467,38 @@ export function EditorForm({
       {editor.type === "budget" && (
         <>
           {categoryField}
-          {amount("Monthly limit", "limit", editor.item?.limit)}
+          {amount("Period limit", "limit", editor.item?.limit)}
+          <div className="form-grid">
+            <Field label="Budget period">
+              <select
+                name="period"
+                defaultValue={editor.item?.period || "monthly"}
+              >
+                <option value="monthly">Every month</option>
+                <option value="weekly">Every week</option>
+              </select>
+            </Field>
+            <Field label="Budget starts">
+              <input
+                name="startDate"
+                type="date"
+                min="2000-01-01"
+                defaultValue={editor.item?.startDate || day()}
+                required
+              />
+            </Field>
+          </div>
+          <label className="check-line">
+            <input
+              name="rollover"
+              type="checkbox"
+              defaultChecked={editor.item?.rollover || false}
+            />
+            Carry unused budget forward
+          </label>
           <p className="form-help">
-            This category limit repeats each month. Only expense transactions
-            count toward it.
+            Only expenses in this category count. Weekly periods start on
+            Monday. Rollover starts from the chosen date.
           </p>
         </>
       )}

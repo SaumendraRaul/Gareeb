@@ -124,20 +124,28 @@ test("fresh setup, expense, persisted reload, edit and undo deletion", async ({
     .fill("125.50");
   await page.getByLabel("What was it for?").fill("QA lunch");
   await page.getByRole("button", { name: "Save expense", exact: true }).click();
-  await expect(page.getByRole("button", { name: /QA lunch/ })).toBeVisible();
+  await expect(
+    page.locator(".transaction").filter({ hasText: "QA lunch" }),
+  ).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: /QA lunch/ })).toBeVisible();
-  await page.getByRole("button", { name: /QA lunch/ }).click();
+  await expect(
+    page.locator(".transaction").filter({ hasText: "QA lunch" }),
+  ).toBeVisible();
+  await page.locator(".transaction").filter({ hasText: "QA lunch" }).click();
   await page
     .getByRole("spinbutton", { name: "Amount", exact: true })
     .fill("150");
   await page.getByRole("button", { name: "Save expense", exact: true }).click();
-  await page.getByRole("button", { name: /QA lunch/ }).click();
+  await page.locator(".transaction").filter({ hasText: "QA lunch" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByRole("button", { name: /QA lunch/ })).toHaveCount(0);
+  await expect(
+    page.locator(".transaction").filter({ hasText: "QA lunch" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.getByRole("button", { name: /QA lunch/ })).toBeVisible();
+  await expect(
+    page.locator(".transaction").filter({ hasText: "QA lunch" }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });
 test("all tabs fit the viewport, charts render, theme persists", async ({
@@ -167,7 +175,7 @@ test("budget, goal contribution and bill payment update records", async ({
   await nav(page, "Plan");
   await page.getByRole("button", { name: "New budget", exact: true }).click();
   await page.getByLabel("Category", { exact: true }).selectOption("health");
-  await page.getByLabel("Monthly limit").fill("2500");
+  await page.getByLabel("Period limit").fill("2500");
   await page.getByRole("button", { name: "Save budget" }).click();
   await expect(
     page.getByRole("heading", { name: "Health", exact: true }),

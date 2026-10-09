@@ -65,6 +65,15 @@ import {
   Sprout,
   Ellipsis,
   RotateCcw,
+  Share2,
+  Handshake,
+  Receipt,
+  ChevronUp,
+  LockKeyhole,
+  Plane,
+  Gift,
+  Dog,
+  Dumbbell,
 } from "lucide-react";
 const icons = {
   ArrowDownLeft,
@@ -121,6 +130,15 @@ const icons = {
   Sprout,
   Ellipsis,
   RotateCcw,
+  Share2,
+  Handshake,
+  Receipt,
+  ChevronUp,
+  LockKeyhole,
+  Plane,
+  Gift,
+  Dog,
+  Dumbbell,
 };
 export function Icon({
   name,

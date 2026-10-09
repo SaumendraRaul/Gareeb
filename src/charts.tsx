@@ -77,18 +77,20 @@ export function Trend({ s, selected }: { s: State; selected: string }) {
   );
 }
 export function Donut({
+  categoryList = categories,
   ts,
   currency,
   large = false,
   hideAmounts = false,
 }: {
   ts: Transaction[];
+  categoryList?: typeof categories;
   currency: string;
   large?: boolean;
   hideAmounts?: boolean;
 }) {
   const total = totals(ts).expense;
-  const data = categories
+  const data = categoryList
     .map((c) => ({ ...c, value: categorySpend(ts, c.id) }))
     .filter((c) => c.value)
     .sort((a, b) => b.value - a.value);

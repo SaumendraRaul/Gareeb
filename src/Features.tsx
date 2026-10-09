@@ -116,8 +116,8 @@ export function QuickEntries({
                 <span
                   className="shortcut-icon"
                   style={{
-                    background: cat(t.category).tint,
-                    color: cat(t.category).color,
+                    background: cat(t.category, s).tint,
+                    color: cat(t.category, s).color,
                   }}
                 >
                   <Icon
@@ -126,7 +126,7 @@ export function QuickEntries({
                         ? "ArrowDownLeft"
                         : t.kind === "transfer"
                           ? "ArrowLeftRight"
-                          : cat(t.category).icon
+                          : cat(t.category, s).icon
                     }
                     size={18}
                   />

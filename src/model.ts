@@ -1,3 +1,4 @@
+import { validateV2, type ExpenseGroup, type CustomCategory } from "./v2-data";
 export type Kind = "expense" | "income" | "transfer";
 export type Transaction = {
   id: string;
@@ -20,7 +21,14 @@ export type Account = {
   opening: number;
   color: string;
 };
-export type Budget = { id: string; category: string; limit: number };
+export type Budget = {
+  id: string;
+  category: string;
+  limit: number;
+  period?: "monthly" | "weekly";
+  rollover?: boolean;
+  startDate?: string;
+};
 export type Goal = {
   id: string;
   name: string;
@@ -38,6 +46,7 @@ export type Bill = {
   category: string;
   account: string;
   active: boolean;
+  remindOn?: string;
 };
 export type Split = {
   id: string;
@@ -59,6 +68,8 @@ export type State = {
     reserve: number;
     haptics?: boolean;
     reducedMotion?: boolean;
+    humour?: boolean;
+    reminders?: boolean;
   };
   transactions: Transaction[];
   accounts: Account[];
@@ -68,6 +79,8 @@ export type State = {
   splits: Split[];
   rules: Rule[];
   shortcuts?: Transaction[];
+  customCategories?: CustomCategory[];
+  groups?: ExpenseGroup[];
 };
 export const categories = [
   {
@@ -155,8 +168,12 @@ export function cents(value: string) {
     throw new Error("Enter an amount between 0.01 and 10 billion.");
   return n;
 }
-export const cat = (id: string) =>
-  categories.find((c) => c.id === id) || categories[8];
+export const allCategories = (s?: Pick<State, "customCategories">) => [
+  ...categories,
+  ...(s?.customCategories || []),
+];
+export const cat = (id: string, s?: Pick<State, "customCategories">) =>
+  allCategories(s).find((c) => c.id === id) || categories[8];
 export function shiftMonth(m: string, delta: number) {
   const [y, n] = m.split("-").map(Number);
   return month(new Date(y, n - 1 + delta, 1));
@@ -246,7 +263,9 @@ export function payBill(s: State, id: string): State {
       ...s.transactions,
     ],
     bills: s.bills.map((x) =>
-      x.id === id ? { ...x, date: nextDue(x.date, x.cadence) } : x,
+      x.id === id
+        ? { ...x, date: nextDue(x.date, x.cadence), remindOn: undefined }
+        : x,
     ),
   };
 }
@@ -467,7 +486,7 @@ export function validateState(input: unknown): State {
     typeof x === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(x) &&
     day(new Date(x + "T12:00:00")) === x;
-  const category = (x: unknown) => categories.some((c) => c.id === x);
+  const category = (x: unknown) => allCategories(s).some((c) => c.id === x);
   if (
     s.version !== 1 ||
     typeof s.demo !== "boolean" ||
@@ -503,6 +522,7 @@ export function validateState(input: unknown): State {
       throw new Error(`Invalid ${key} in backup.`);
   }
   const account = (x: unknown) => s.accounts.some((a) => a.id === x);
+  validateV2(s);
   if (
     s.shortcuts !== undefined &&
     (!Array.isArray(s.shortcuts) ||
@@ -568,6 +588,7 @@ export function validateState(input: unknown): State {
         !str(b.name) ||
         !pos(b.amount) ||
         !date(b.date) ||
+        (b.remindOn !== undefined && !date(b.remindOn)) ||
         !["weekly", "monthly", "yearly"].includes(b.cadence) ||
         !category(b.category) ||
         !account(b.account) ||

@@ -6,7 +6,7 @@ import {
   available,
   balances,
   cat,
-  categories,
+  allCategories,
   categorySpend,
   day,
   demoState,
@@ -17,6 +17,7 @@ import {
   month,
   parseCSV,
   payBill,
+  nextDue,
   shiftMonth,
   totals,
   validateState,
@@ -35,6 +36,16 @@ import {
   ExperienceSettings,
 } from "./Features";
 import { configureHaptics, feedback } from "./feedback";
+import { Groups } from "./Groups";
+import {
+  QuickCapture,
+  MoneyStory,
+  SmartBudgets,
+  CategorySettings,
+} from "./V2Features";
+import { PrivacySettings, UnlockBackup } from "./Privacy";
+import { syncReminders } from "./reminders";
+import { budgetWindow } from "./v2";
 type Tab = "home" | "activity" | "insights" | "plan" | "wallets" | "settings";
 type Confirmation = {
   title: string;
@@ -76,6 +87,7 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  const [encryptedBackup, setEncryptedBackup] = useState<unknown>(null);
   const lock = useRef(false);
   useEffect(() => {
     void loadState()
@@ -115,11 +127,14 @@ export default function App() {
     setConfirm(null);
     setShowAlerts(false);
     setImportPreview(null);
+    setEncryptedBackup(null);
   }, []);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const listener = NativeApp.addListener("backButton", () => {
-      if (editor || confirm || showAlerts || importPreview) close();
+      if (document.querySelector('[role="dialog"]'))
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      else if (editor || confirm || showAlerts || importPreview) close();
       else if (tab !== "home") setTab("home");
       else void NativeApp.minimizeApp();
     });
@@ -128,7 +143,7 @@ export default function App() {
     };
   }, [editor, confirm, showAlerts, importPreview, tab, close]);
   async function save(next: State, message = "Saved", canUndo = true) {
-    if (lock.current) return;
+    if (lock.current) return false;
     lock.current = true;
     setSaving(true);
     try {
@@ -139,15 +154,23 @@ export default function App() {
       setNotice(message);
       void feedback("success");
       close();
+      return true;
     } catch (e) {
       setNotice("Could not save: " + (e as Error).message);
       configureHaptics(s?.settings.haptics !== false);
       void feedback("error");
+      return false;
     } finally {
       lock.current = false;
       setSaving(false);
     }
   }
+  useEffect(() => {
+    if (s)
+      void syncReminders(s).catch((e) =>
+        setNotice("Reminder update: " + (e as Error).message),
+      );
+  }, [s?.bills, s?.settings.reminders, s?.demo]);
   function go(next: Tab) {
     setTab(next);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -198,10 +221,15 @@ export default function App() {
   async function importFile(file: File | undefined, backup = false) {
     if (!file || !s) return;
     try {
-      if (file.size > 20e6) throw new Error("Choose a file under 20 MB.");
+      if (file.size > 30e6) throw new Error("Choose a file under 30 MB.");
       const text = await file.text();
       if (backup) {
-        const restored = validateState(JSON.parse(text));
+        const parsed = JSON.parse(text);
+        if (parsed?.format === "gareeb-encrypted") {
+          setEncryptedBackup(parsed);
+          return;
+        }
+        const restored = validateState(parsed);
         setConfirm({
           title: "Restore this backup?",
           description: `Replaces this device’s data with ${restored.transactions.length} transactions and ${restored.accounts.length} wallets. Export your current backup first if you need to keep it.`,
@@ -354,6 +382,7 @@ export default function App() {
         )}
       </div>
     );
+  const categories = allCategories(s);
   const ts = inMonth(s, selected);
   const sums = totals(ts);
   const prev = totals(inMonth(s, shiftMonth(selected, -1)));
@@ -361,10 +390,20 @@ export default function App() {
   const due = s.bills
     .filter((b) => b.active)
     .sort((a, b) => a.date.localeCompare(b.date));
-  const budgets = s.budgets.map((b) => ({
-    ...b,
-    spent: categorySpend(ts, b.category),
-  }));
+  const budgets = s.budgets
+    .map((b) => ({
+      ...b,
+      ...budgetWindow(
+        s,
+        b,
+        b.period === "weekly"
+          ? day()
+          : selected === month()
+            ? day()
+            : selected + "-01",
+      ),
+    }))
+    .filter((b) => b.active);
   const budgetTotal = budgets.reduce((n, b) => n + b.limit, 0);
   const budgetSpent = budgets.reduce((n, b) => n + b.spent, 0);
   const sorted = [...ts].sort((a, b) => b.date.localeCompare(a.date));
@@ -387,11 +426,13 @@ export default function App() {
       ),
     ...s.budgets
       .filter(
-        (b) => categorySpend(inMonth(s, month()), b.category) >= b.limit * 0.8,
+        (b) =>
+          budgetWindow(s, b).spent >= budgetWindow(s, b).limit * 0.8 &&
+          budgetWindow(s, b).active,
       )
       .map(
         (b) =>
-          `${cat(b.category).name} is at ${Math.round((categorySpend(inMonth(s, month()), b.category) / b.limit) * 100)}% of its budget.`,
+          `${cat(b.category, s).name} is at ${Math.round((budgetWindow(s, b).spent / budgetWindow(s, b).limit) * 100)}% of its budget.`,
       ),
   ];
   const monthTitle = new Date(selected + "-01T12:00:00").toLocaleDateString(
@@ -435,9 +476,11 @@ export default function App() {
               className="category-icon"
               style={{
                 background:
-                  t.kind === "income" ? "var(--mint)" : cat(t.category).tint,
+                  t.kind === "income" ? "var(--mint)" : cat(t.category, s).tint,
                 color:
-                  t.kind === "income" ? "var(--green)" : cat(t.category).color,
+                  t.kind === "income"
+                    ? "var(--green)"
+                    : cat(t.category, s).color,
               }}
             >
               <Icon
@@ -446,7 +489,7 @@ export default function App() {
                     ? "ArrowDownLeft"
                     : t.kind === "transfer"
                       ? "ArrowLeftRight"
-                      : cat(t.category).icon
+                      : cat(t.category, s).icon
                 }
               />
             </span>
@@ -457,7 +500,7 @@ export default function App() {
                   ? "Transfer"
                   : t.kind === "income"
                     ? "Income"
-                    : cat(t.category).name}
+                    : cat(t.category, s).name}
                 <span>·</span>
                 {s.accounts.find((a) => a.id === t.account)?.name}
               </small>
@@ -756,6 +799,10 @@ export default function App() {
                   </span>
                 </div>
               </div>
+              <QuickCapture
+                s={s}
+                onDraft={(draft) => setEditor({ type: "transaction", draft })}
+              />
               <QuickEntries
                 s={s}
                 cash={cash}
@@ -832,6 +879,7 @@ export default function App() {
                   }
                 >
                   <Donut
+                    categoryList={categories}
                     ts={ts}
                     currency={s.settings.currency}
                     hideAmounts={hide}
@@ -916,9 +964,9 @@ export default function App() {
                         <span>
                           <i
                             className="dot"
-                            style={{ background: cat(b.category).color }}
+                            style={{ background: cat(b.category, s).color }}
                           />
-                          {cat(b.category).name}
+                          {cat(b.category, s).name}
                         </span>
                         <span>
                           <b>{cash(b.spent)}</b> / {cash(b.limit)}
@@ -929,7 +977,7 @@ export default function App() {
                         color={
                           b.spent > b.limit
                             ? "var(--red)"
-                            : cat(b.category).color
+                            : cat(b.category, s).color
                         }
                       />
                     </div>
@@ -937,7 +985,7 @@ export default function App() {
                   {!budgets.length && (
                     <Empty
                       title="Give your money a plan"
-                      description="Choose a category and set a comfortable monthly limit."
+                      description="Choose a category and set a comfortable weekly or monthly limit."
                       action={newButton("Create budget", "budget")}
                     />
                   )}
@@ -1152,6 +1200,21 @@ export default function App() {
           )}
           {tab === "insights" && (
             <>
+              <MoneyStory
+                s={s}
+                selected={selected}
+                cash={cash}
+                onExplore={(category) => {
+                  setCatFilter(category);
+                  setTypeFilter("expense");
+                  setDateFilter("");
+                  setAccountFilter("all");
+                  setSearch("");
+                  setReviewFilter(false);
+                  setActivityView("list");
+                  go("activity");
+                }}
+              />
               <WeekReview s={s} cash={cash} />
               <div className="metric-grid">
                 <div className="mini-metric">
@@ -1213,6 +1276,7 @@ export default function App() {
                   sub="Every category has a story"
                 >
                   <Donut
+                    categoryList={categories}
                     ts={ts}
                     currency={s.settings.currency}
                     large
@@ -1356,96 +1420,13 @@ export default function App() {
                 {planTab === "Budgets" && monthPicker}
               </div>
               {planTab === "Budgets" && (
-                <>
-                  <div className="plan-summary">
-                    <span className="round-icon">
-                      <Icon name="Wallet" size={26} />
-                    </span>
-                    <div>
-                      <span>YOUR MONTHLY BOUNDARIES</span>
-                      <h2>
-                        {cash(Math.max(0, budgetTotal - budgetSpent))}{" "}
-                        <small>left in budgeted categories</small>
-                      </h2>
-                      <p>
-                        {cash(budgetSpent)} spent of {cash(budgetTotal)}{" "}
-                        allocated
-                      </p>
-                    </div>
-                    {newButton("New budget", "budget")}
-                  </div>
-                  <div className="card-grid">
-                    {budgets.map((b) => (
-                      <section className="budget-card" key={b.id}>
-                        <div className="card-top">
-                          <span
-                            className="category-icon"
-                            style={{
-                              color: cat(b.category).color,
-                              background: cat(b.category).tint,
-                            }}
-                          >
-                            <Icon name={cat(b.category).icon} />
-                          </span>
-                          <button
-                            className="icon-button"
-                            aria-label={`Edit ${cat(b.category).name} budget`}
-                            onClick={() =>
-                              setEditor({ type: "budget", item: b })
-                            }
-                          >
-                            <Icon name="Pencil" size={17} />
-                          </button>
-                        </div>
-                        <h3>{cat(b.category).name}</h3>
-                        <div className="budget-amount">
-                          <strong>{cash(b.spent)}</strong>
-                          <span>of {cash(b.limit)}</span>
-                        </div>
-                        <Progress
-                          value={(b.spent / b.limit) * 100}
-                          color={
-                            b.spent > b.limit
-                              ? "var(--red)"
-                              : cat(b.category).color
-                          }
-                        />
-                        <div
-                          className={`budget-status ${b.spent > b.limit ? "negative" : ""}`}
-                        >
-                          <span>
-                            {cash(Math.abs(b.limit - b.spent))}{" "}
-                            {b.spent > b.limit
-                              ? "over budget"
-                              : "left to spend"}
-                          </span>
-                          <b>{Math.round((b.spent / b.limit) * 100)}%</b>
-                        </div>
-                      </section>
-                    ))}
-                    <button className="add-card" onClick={() => add("budget")}>
-                      <span>
-                        <Icon name="Plus" />
-                      </span>
-                      <strong>A little more intention</strong>
-                      <small>Add a category budget</small>
-                    </button>
-                  </div>
-                  <div className="insight-strip">
-                    <span className="insight-icon">
-                      <Icon name="CircleHelp" />
-                    </span>
-                    <div>
-                      <strong>Your plan, at a glance</strong>
-                      <span>
-                        {cash(budgetTotal)} allocated from{" "}
-                        {cash(s.settings.monthlyIncome)} planned income.{" "}
-                        {cash(s.settings.monthlyIncome - budgetTotal)}{" "}
-                        unallocated. Limits repeat monthly.
-                      </span>
-                    </div>
-                  </div>
-                </>
+                <SmartBudgets
+                  s={s}
+                  selected={selected}
+                  cash={cash}
+                  onEdit={(item) => setEditor({ type: "budget", item })}
+                  onNew={() => add("budget")}
+                />
               )}
               {planTab === "Goals" && (
                 <>
@@ -1563,11 +1544,11 @@ export default function App() {
                         <span
                           className="category-icon"
                           style={{
-                            color: cat(b.category).color,
-                            background: cat(b.category).tint,
+                            color: cat(b.category, s).color,
+                            background: cat(b.category, s).tint,
                           }}
                         >
-                          <Icon name={cat(b.category).icon} />
+                          <Icon name={cat(b.category, s).icon} />
                         </span>
                         <div className="bill-info">
                           <strong>{b.name}</strong>
@@ -1605,6 +1586,66 @@ export default function App() {
                           >
                             Mark paid
                           </button>
+                          {b.active && (
+                            <>
+                              <button
+                                className="text-button"
+                                onClick={() => {
+                                  const tomorrow = new Date(
+                                    ((b.remindOn || b.date) > day()
+                                      ? b.remindOn || b.date
+                                      : day()) + "T12:00:00",
+                                  );
+                                  tomorrow.setDate(tomorrow.getDate() + 1);
+                                  void save(
+                                    {
+                                      ...s,
+                                      bills: s.bills.map((x) =>
+                                        x.id === b.id
+                                          ? { ...x, remindOn: day(tomorrow) }
+                                          : x,
+                                      ),
+                                    },
+                                    `Reminder moved to ${day(tomorrow)}. Enable device reminders in Settings for a notification.`,
+                                  );
+                                }}
+                              >
+                                Snooze reminder
+                              </button>
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  setConfirm({
+                                    title: `Skip ${b.name} this time?`,
+                                    description:
+                                      "Moves the next due date forward without recording a payment.",
+                                    label: "Skip occurrence",
+                                    action: () =>
+                                      void save(
+                                        {
+                                          ...s,
+                                          bills: s.bills.map((x) =>
+                                            x.id === b.id
+                                              ? {
+                                                  ...x,
+                                                  date: nextDue(
+                                                    x.date,
+                                                    x.cadence,
+                                                  ),
+                                                  remindOn: undefined,
+                                                }
+                                              : x,
+                                          ),
+                                        },
+                                        "Occurrence skipped.",
+                                      ),
+                                  })
+                                }
+                              >
+                                Skip occurrence
+                              </button>
+                            </>
+                          )}
                           <button
                             className="icon-button"
                             aria-label={`Edit ${b.name}`}
@@ -1640,15 +1681,18 @@ export default function App() {
                     />
                   )}
                   <p className="quiet-note">
-                    Reminders appear in the app. No automatic charges,
-                    cancellations, or background notifications.
+                    Enable private device reminders in Settings. Bills are never
+                    charged or cancelled automatically.
                   </p>
                 </Section>
               )}
               {planTab === "Together" && (
+                <Groups s={s} onSave={save} onNotice={setNotice} cash={cash} />
+              )}
+              {planTab === "Together" && (
                 <Section
-                  title="Keep the little things even."
-                  sub="Your personal shared-expense notebook"
+                  title="Your earlier IOUs"
+                  sub="Simple one-to-one notes, kept alongside your groups"
                   action={newButton("Add IOU", "split")}
                 >
                   <div className="activity-stats">
@@ -1988,6 +2032,8 @@ export default function App() {
                     {s.accounts.map((a) => `${a.name} = ${a.id}`).join("; ")}.
                   </p>
                 </Section>
+                <CategorySettings s={s} onSave={save} />
+                <PrivacySettings s={s} onSave={save} onNotice={setNotice} />
                 <Section
                   title="Little shortcuts"
                   sub="Merchant categorisation rules"
@@ -2001,7 +2047,7 @@ export default function App() {
                     >
                       <span>“{r.match}”</span>
                       <Icon name="ArrowRight" size={16} />
-                      <b>{cat(r.category).name}</b>
+                      <b>{cat(r.category, s).name}</b>
                       <Icon name="Pencil" size={15} />
                     </button>
                   ))}
@@ -2078,17 +2124,19 @@ export default function App() {
               <Icon name="Sprout" size={15} /> A little mindful. A lot more
               free.
             </span>
-            <span>Gareeb · v1.1</span>
+            <span>Gareeb · v2.0</span>
           </footer>
         </main>
       </div>
-      <button
-        className="mobile-fab"
-        aria-label="Add transaction"
-        onClick={() => add()}
-      >
-        <Icon name="Plus" size={27} />
-      </button>
+      {!(tab === "plan" && planTab === "Together") && (
+        <button
+          className="mobile-fab"
+          aria-label="Add transaction"
+          onClick={() => add()}
+        >
+          <Icon name="Plus" size={27} />
+        </button>
+      )}
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {nav.map(([id, icon, label]) => (
           <button
@@ -2109,6 +2157,21 @@ export default function App() {
         accept=".csv,text/csv"
         onChange={(e) => void importFile(e.target.files?.[0])}
       />
+      {encryptedBackup !== null && (
+        <UnlockBackup
+          envelope={encryptedBackup}
+          onClose={() => setEncryptedBackup(null)}
+          onRestore={(restored) => {
+            setEncryptedBackup(null);
+            setConfirm({
+              title: "Restore this backup?",
+              description: `Replace this device’s records with ${restored.transactions.length} transactions and ${(restored.groups || []).length} shared groups? Export your current backup first if needed.`,
+              label: "Restore backup",
+              action: () => void save(restored, "Backup restored."),
+            });
+          }}
+        />
+      )}
       <input
         ref={backupRef}
         className="sr-only"
