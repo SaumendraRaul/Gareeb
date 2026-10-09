@@ -22,6 +22,7 @@ const native = Capacitor.isNativePlatform();
 export function PrivacyGate({ children }: { children: ReactNode }) {
   const [locked, setLocked] = useState(native),
     [ready, setReady] = useState(!native),
+    [started, setStarted] = useState(!native),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     enabled = useRef(false),
@@ -35,6 +36,7 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
         if (alive) {
           enabled.current = r.enabled;
           setLocked(r.enabled);
+          if (!r.enabled) setStarted(true);
           setReady(true);
         }
       } catch {
@@ -55,7 +57,10 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
       void Privacy.status()
         .then((r) => {
           enabled.current = r.enabled;
-          if (!r.enabled) setLocked(false);
+          if (!r.enabled) {
+            setLocked(false);
+            setStarted(true);
+          }
         })
         .catch(() => setLocked(true));
     };
@@ -73,6 +78,7 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
     setError("");
     try {
       await Privacy.authenticate();
+      setStarted(true);
       setLocked(false);
     } catch (e) {
       setError((e as Error).message || "Unlock was cancelled.");
@@ -81,34 +87,45 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }
-  if (!ready || locked)
-    return (
-      <main className="privacy-screen">
-        <Logo />
-        <span className="privacy-seal">
-          <Icon name="LockKeyhole" size={34} />
-        </span>
-        <h1>
-          Your space.
-          <br />
-          Just for you.
-        </h1>
-        <p>Unlock with your device’s fingerprint, face, or screen lock.</p>
-        {error && (
-          <p role="alert" className="form-error">
-            {error}
-          </p>
-        )}
-        <button
-          className="primary"
-          disabled={!ready || busy}
-          onClick={() => void unlock()}
+  return (
+    <>
+      {started && (
+        <div
+          style={{ display: !ready || locked ? "none" : undefined }}
+          inert={!ready || locked}
+          aria-hidden={!ready || locked}
         >
-          {busy ? "Unlocking…" : "Unlock Gareeb"}
-        </button>
-      </main>
-    );
-  return children;
+          {children}
+        </div>
+      )}
+      {(!ready || locked) && (
+        <main className="privacy-screen">
+          <Logo />
+          <span className="privacy-seal">
+            <Icon name="LockKeyhole" size={34} />
+          </span>
+          <h1>
+            Your space.
+            <br />
+            Just for you.
+          </h1>
+          <p>Unlock with your device’s fingerprint, face, or screen lock.</p>
+          {error && (
+            <p role="alert" className="form-error">
+              {error}
+            </p>
+          )}
+          <button
+            className="primary"
+            disabled={!ready || busy}
+            onClick={() => void unlock()}
+          >
+            {busy ? "Unlocking…" : "Unlock Gareeb"}
+          </button>
+        </main>
+      )}
+    </>
+  );
 }
 export function PrivacySettings({
   s,

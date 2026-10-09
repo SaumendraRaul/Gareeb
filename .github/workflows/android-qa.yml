@@ -5,7 +5,6 @@ on:
       release_tag:
         description: Published APK release to test
         required: true
-        default: android-build-9
   workflow_run:
     workflows: [Build Android APK]
     types: [completed]

@@ -575,6 +575,33 @@ try {
       await enterTestPin();
       await expect(page.locator(".app-shell")).toBeVisible({ timeout: 30000 });
       await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+      await nav("Overview");
+      await page
+        .getByRole("button", { name: "Add transaction", exact: true })
+        .filter({ visible: true })
+        .first()
+        .click();
+      await page.getByLabel("Amount", { exact: true }).fill("12.34");
+      await page
+        .getByLabel("What was it for?")
+        .fill("Draft kept behind the lock");
+      await device.shell("input keyevent 3");
+      await expect(page.locator(".privacy-screen")).toBeVisible();
+      await expect(page.locator(".app-shell")).toBeHidden();
+      await device.shell(`am start -n ${pkg}/.MainActivity`);
+      await page
+        .getByRole("button", { name: "Unlock Gareeb", exact: true })
+        .click();
+      await enterTestPin();
+      await expect(page.getByRole("dialog")).toBeVisible({ timeout: 30000 });
+      await expect(page.getByLabel("Amount", { exact: true })).toHaveValue(
+        "12.34",
+      );
+      await expect(page.getByLabel("What was it for?")).toHaveValue(
+        "Draft kept behind the lock",
+      );
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await page
         .getByRole("button", { name: "Open settings", exact: true })
         .click();
