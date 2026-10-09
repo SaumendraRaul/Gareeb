@@ -19,6 +19,22 @@ assert.ok(device, "Android emulator must be connected");
 device.setDefaultTimeout(45000);
 let page;
 const pkg = "com.gareeb.money";
+async function install(content, label) {
+  const path = `/data/local/tmp/gareeb-${label}.apk`;
+  await device.push(content, path);
+  const result = (await device.shell(`pm install -r -t ${path}`)).toString();
+  console.log(`INSTALL ${label}: ${result.trim()}`);
+  assert.match(
+    result,
+    /Success/,
+    `Android must accept the ${label} APK: ${result}`,
+  );
+  report[label + "Package"] = (await device.shell(`dumpsys package ${pkg}`))
+    .toString()
+    .split("\n")
+    .filter((line) => /versionCode=|versionName=/.test(line));
+  console.log(report[label + "Package"].join("\n"));
+}
 async function check(name, fn) {
   await fn();
   report.checks.push(name);
@@ -47,7 +63,7 @@ try {
       .trim(),
   };
   await check("APK installs and opens the welcome screen", async () => {
-    await device.installApk(previous || apk);
+    await install(previous || apk, "initial");
     await launch();
     await expect(
       page.getByRole("button", { name: "Make yourself at home" }),
@@ -83,20 +99,83 @@ try {
   );
   if (previous)
     await check(
-      "APK update preserves saved records without uninstalling",
+      "Legacy backup restores into the durable-signed APK",
       async () => {
-        await device.shell(`am force-stop ${pkg}`);
-        await device.installApk(apk);
+        await page
+          .getByRole("button", { name: "Open settings", exact: true })
+          .click();
+        await page.getByRole("button", { name: "Export full backup" }).click();
+        let files = "";
+        await expect
+          .poll(
+            async () => {
+              files = (
+                await device.shell("run-as " + pkg + " ls cache")
+              ).toString();
+              return files;
+            },
+            { timeout: 20000 },
+          )
+          .toContain("gareeb-backup-");
+        const filename = files
+          .split(/\s+/)
+          .find((x) => /^gareeb-backup-.*\.json$/.test(x));
+        assert.ok(filename);
+        const backup = (
+          await device.shell("run-as " + pkg + " cat cache/" + filename)
+        ).toString();
+        assert.equal(JSON.parse(backup).transactions.length, 1);
+        await device.shell("am force-stop " + pkg);
+        // Only the disposable emulator installation is removed. The exported backup is held by this test.
+        assert.match(
+          (await device.shell("pm uninstall " + pkg)).toString(),
+          /Success/,
+        );
+        await install(apk, "updated");
         await launch();
+        await page
+          .getByRole("button", { name: "Make yourself at home" })
+          .click();
+        await page.getByLabel("What should we call you?").fill("Recovery");
+        await page.getByLabel("Monthly income plan").fill("0");
+        await page.getByLabel("Current main account balance").fill("0");
+        await page.getByRole("button", { name: "Let’s begin" }).click();
+        await page
+          .getByRole("button", { name: "Open settings", exact: true })
+          .click();
+        await page
+          .locator('input[type=file][accept=".json,application/json"]')
+          .setInputFiles({
+            name: "legacy-backup.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(backup),
+          });
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Restore backup", exact: true })
+          .click();
+        await expect(page.getByRole("status")).toContainText("Backup restored");
+        await nav("Overview");
         await expect(
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
-        await expect(
-          page.getByRole("button", { name: /Android coffee/ }),
-        ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+        await expect(page.locator(".page-footer")).toContainText("v1.1");
+        await expect(
+          page.getByRole("region", { name: "Transaction shortcuts" }),
+        ).toBeVisible();
       },
     );
+  await check("Stable-signed replacement preserves saved records", async () => {
+    await device.shell("am force-stop " + pkg);
+    await install(apk, "replacement");
+    await launch();
+    await expect(
+      page.getByRole("heading", { name: "Hey Android QA" }),
+    ).toBeVisible();
+    await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
+    await expect(page.locator(".page-footer")).toContainText("v1.1");
+  });
   await check(
     "Force-stop and offline relaunch retain the saved expense",
     async () => {

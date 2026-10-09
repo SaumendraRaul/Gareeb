@@ -55,20 +55,30 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - run: npm run android:sync
-      - name: Keep development signing identity across builds
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: gareeb-debug-signing-v1
+      - name: Restore durable preview signing identity
+        if: github.event_name != 'pull_request'
+        env:
+          GAREEB_SIGNING_KEY: ${{ secrets.GAREEB_SIGNING_KEY }}
+        run: |
+          test -n "$GAREEB_SIGNING_KEY" || { echo 'Signing secret is required for published APKs'; exit 1; }
+          printf '%s' "$GAREEB_SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/gareeb-signing.p12"
+          chmod 600 "$RUNNER_TEMP/gareeb-signing.p12"
       - name: Build installable APK
         working-directory: android
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+          GAREEB_SIGNING_STORE: ${{ github.event_name != 'pull_request' && format('{0}/gareeb-signing.p12', runner.temp) || '' }}
+          GAREEB_SIGNING_PASSWORD: ${{ secrets.GAREEB_SIGNING_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
       - name: Verify APK signature
         run: $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify stable preview certificate
+        if: github.event_name != 'pull_request'
+        run: |
+          $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | tee artifacts-certificate.txt
+          grep -qi '2184e50e11d905e3e7fc8d9859f7feb2f670c39be35baa3ea01defdfe046f1a0' artifacts-certificate.txt
       - name: Prepare download
         run: |
           mkdir -p artifacts

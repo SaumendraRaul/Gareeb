@@ -10,7 +10,9 @@ The interface now includes smoother page and sheet transitions, tactile navigati
 
 Existing records and backups remain compatible. A separate Android 15 emulator workflow checks installation, updates, persistence, native haptic calls, and backup sharing, retaining its report and screenshots.
 
-This is a **development-signed preview APK**, not a Play Store production release. Signing is cached across Actions builds; if the cache is deleted, Android may require uninstalling the old build. Export a backup before uninstalling or clearing app data. Import it after reinstalling.
+**Updating from build 6 or earlier:** the older signing keys were temporary, so Android cannot install this release over those versions. First use Settings → Export full backup and save the JSON outside Gareeb. Verify that the file exists before uninstalling the old app. Install this APK, finish the initial setup, then use Settings → Restore a backup. Never uninstall before saving your backup.
+
+This is a **preview APK**, not a Play Store production release. From build 7, the signing identity is stored in encrypted repository secrets and verified on every published build so future updates use the same certificate.
 
 Data stays on the device. There is no live bank sync, cloud sync, automatic subscription cancellation, OCR, or background push reminder service. Bills and IOU settlements are manually recorded. Goals track savings progress separately from wallets. All wallets use the currency selected during setup.
 

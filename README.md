@@ -8,7 +8,9 @@ A mobile-first, offline expense tracker and money planner. Original ivory, fores
 
 Open [Releases](https://github.com/SaumendraRaul/Gareeb/releases) and download **gareeb-android.apk** from the newest Android build. Android 7.0+ is supported. This is a development-signed preview, not a Play Store release. APK and checksum also appear under the [Actions workflow](https://github.com/SaumendraRaul/Gareeb/actions/workflows/android.yml) artifacts.
 
-Every push to `main` or manual workflow dispatch runs the tests and builds an APK. No repository secrets are needed for preview builds. The workflow caches the debug signing key for updates; cache eviction changes that key, so export a backup before uninstalling a prior version. A production release needs a private, stable release keystore stored in GitHub secrets and a separate signing configuration.
+Every push to `main` or manual workflow dispatch runs the tests and builds an APK. Published builds use the durable signing identity stored in the repository's encrypted `GAREEB_SIGNING_KEY` and `GAREEB_SIGNING_PASSWORD` Actions secrets. The workflow checks its certificate fingerprint and fails instead of silently generating a different key. Pull-request builds use a disposable debug identity and must not replace published installations.
+
+**One-time migration from builds 4–6:** those previews used temporary signing keys that were not retained. In your existing app, use Settings → Export full backup and save the JSON outside the app (for example in Downloads or Drive). Verify that the file was saved before uninstalling. Install build 7 or later, complete the initial setup, then use Settings → Restore a backup and select your saved JSON. Do not uninstall before saving the backup. Later builds signed with the durable identity can update the installation normally.
 
 ## Included
 
