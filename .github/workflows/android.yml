@@ -54,6 +54,8 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
+      - name: Generate matching Android and web brand assets
+        run: npm run brand:generate
       - run: npm run android:sync
       - name: Restore durable preview signing identity
         if: github.event_name != 'pull_request'

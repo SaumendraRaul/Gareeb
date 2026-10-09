@@ -230,27 +230,36 @@ button:disabled:hover {
 .logo {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -1.6px;
+  gap: 10px;
+  font-size: 29px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -1.3px;
   color: var(--green);
 }
 .logo svg {
-  width: 36px;
-  height: 36px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 4;
+  width: 33px;
+  height: 38px;
+  flex: none;
+  overflow: visible;
 }
-.logo svg circle {
+.brand-pocket {
   fill: currentColor;
-  stroke: none;
 }
-.logo-dot {
-  color: #92ad67;
+.brand-fold {
+  fill: #9aae89;
+}
+.brand-coin {
+  fill: #c49b50;
+}
+.brand-glint {
+  fill: #f8e6b7;
+}
+[data-theme="dark"] .brand-coin {
+  fill: #e3be78;
+}
+[data-theme="dark"] .brand-fold {
+  fill: #71947c;
 }
 .sidebar {
   width: 222px;
@@ -2515,12 +2524,13 @@ input[type="checkbox"] {
     display: block;
   }
   .mobile-logo .logo {
-    font-size: 28px;
-    gap: 5px;
+    font-size: 25px;
+    gap: 8px;
+    letter-spacing: -1.15px;
   }
   .mobile-logo .logo svg {
-    width: 31px;
-    height: 31px;
+    width: 27px;
+    height: 32px;
   }
   .breadcrumb,
   .today-label {

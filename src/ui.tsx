@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { feedback } from "./feedback";
+import brand from "./brand.json";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -136,13 +137,12 @@ export function Icon({
 export function Logo() {
   return (
     <span className="logo">
-      <svg viewBox="0 0 40 40" aria-hidden="true">
-        <path d="M26 11a13 13 0 1 0 3 17v-7H19" />
-        <circle cx="29" cy="10" r="2.5" />
+      <svg viewBox="22 12 84 96" aria-hidden="true" focusable="false">
+        {brand.paths.map(({ role, d }) => (
+          <path key={role} className={`brand-${role}`} d={d} />
+        ))}
       </svg>
-      <span>
-        gareeb<span className="logo-dot">.</span>
-      </span>
+      <span>gareeb</span>
     </span>
   );
 }

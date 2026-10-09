@@ -1,5 +1,7 @@
 Gareeb is a private, offline expense and money-planning app with a mobile-first ivory-and-emerald interface.
 
+New in v1.1.2: a custom folded-pocket and gold-coin emblem, a calmer lowercase wordmark, and matching launcher, themed Android icon, favicon, and launch-screen artwork. The mobile header is more compact and the logo adapts to light and dark themes. The name and your data stay the same. Build 7 or newer can be updated in place; the older-build migration instructions below still apply.
+
 Download **gareeb-android.apk** below on your Android phone (Android 7 or later). Allow installation from your browser when Android asks, then open Gareeb. Start fresh or explore the labelled sample data.
 
 Includes expense/income/transfers, multiple wallets, category budgets, savings goals, recurring bills, IOUs, cash-flow and category analytics, transaction search and filters, receipt attachments, merchant rules, dark mode, CSV import/export and full JSON backups. No signup or API keys required.
