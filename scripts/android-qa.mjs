@@ -43,10 +43,20 @@ async function check(name, fn) {
 }
 async function launch() {
   await device.shell(`am start -n ${pkg}/.MainActivity`);
-  const view = await device.webView({ pkg });
+  // The old debugging socket can outlive force-stop. Match the current app
+  // process rather than accidentally reconnecting to its closing WebView.
+  let view;
+  await expect.poll(async () => {
+    const pid = Number((await device.shell(`pidof ${pkg}`)).toString().trim());
+    view = device.webViews().find((candidate) => candidate.pkg() === pkg && candidate.pid() === pid);
+    return Boolean(view);
+  }, { timeout: 45000, message: "Wait for the relaunched app's WebView" }).toBe(true);
   page = await view.page();
   page.setDefaultTimeout(20000);
   page.on("pageerror", (e) => report.errors.push(e.message));
+  // Native storage and first WebView rendering can exceed the matcher default
+  // on a cold emulator. Wait for the actual ready UI, not a fixed sleep.
+  await expect(page.locator(".welcome-wrap, .app-shell")).toBeVisible({ timeout: 30000 });
   return page;
 }
 async function nav(name) {
