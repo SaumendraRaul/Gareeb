@@ -564,7 +564,14 @@ try {
           { timeout: 30000 },
         )
         .toContain('class="android.widget.EditText"');
-      await device.shell("input keyevent 4");
+      // Android first consumes Back to hide the PIN keyboard. Continue only
+      // while the system credential field is still present to cancel the prompt.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await device.shell("input keyevent 4");
+        await device.shell("uiautomator dump /sdcard/qa-auth.xml");
+        const xml = (await device.shell("cat /sdcard/qa-auth.xml")).toString();
+        if (!xml.includes('class="android.widget.EditText"')) break;
+      }
       await expect(
         page.getByRole("button", { name: "Unlock Gareeb", exact: true }),
       ).toBeEnabled({ timeout: 20000 });
@@ -633,6 +640,11 @@ try {
   console.error(error);
   try {
     await device.screenshot({ path: out + "/failure.png" });
+    await device.shell("uiautomator dump /sdcard/qa-failure.xml");
+    await writeFile(
+      out + "/failure.xml",
+      (await device.shell("cat /sdcard/qa-failure.xml")).toString(),
+    );
   } catch {}
   process.exitCode = 1;
 } finally {
