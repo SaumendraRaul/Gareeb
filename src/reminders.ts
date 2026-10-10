@@ -5,9 +5,23 @@ import { day, nextDue, type State } from "./model";
 export function upcomingReminders(s: State, now = new Date()) {
   const notifications = [];
   for (const b of s.bills.filter((b) => b.active)) {
+    if (b.trialEnd && b.trialEnd >= day(now)) {
+      const trialAt = new Date(b.trialEnd + "T09:00:00");
+      if (trialAt <= now) trialAt.setTime(now.getTime() + 60000);
+      notifications.push({
+        id: 100000 + notifications.length,
+        title: "A little reminder from Gareeb",
+        body: "A free trial is ending. Open Gareeb to review it.",
+        schedule: { at: trialAt },
+        isExactNotification: false,
+        channelId: "gareeb-bills",
+        extra: { billId: b.id },
+        autoCancel: true,
+      });
+    }
     let date = b.remindOn || b.date;
     for (let i = 0; i < 6000 && date < day(now); i++)
-      date = nextDue(date, b.cadence);
+      date = nextDue(date, b.cadence, b.anchorDay || Number(b.date.slice(8)));
     const at = new Date(date + "T09:00:00");
     if (at <= now) {
       if (date === day(now)) at.setTime(now.getTime() + 60000);

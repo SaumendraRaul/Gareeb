@@ -1,3 +1,9 @@
+import {
+  validateV3,
+  type IncomeSchedule,
+  type ExpectedPayment,
+  type PriceChange,
+} from "./v3";
 import { validateV2, type ExpenseGroup, type CustomCategory } from "./v2-data";
 export type Kind = "expense" | "income" | "transfer";
 export type Transaction = {
@@ -47,6 +53,10 @@ export type Bill = {
   account: string;
   active: boolean;
   remindOn?: string;
+  autopay?: boolean;
+  anchorDay?: number;
+  trialEnd?: string;
+  priceHistory?: PriceChange[];
 };
 export type Split = {
   id: string;
@@ -81,6 +91,8 @@ export type State = {
   shortcuts?: Transaction[];
   customCategories?: CustomCategory[];
   groups?: ExpenseGroup[];
+  recurringIncome?: IncomeSchedule[];
+  expectedPayments?: ExpectedPayment[];
 };
 export const categories = [
   {
@@ -178,7 +190,11 @@ export function shiftMonth(m: string, delta: number) {
   const [y, n] = m.split("-").map(Number);
   return month(new Date(y, n - 1 + delta, 1));
 }
-export function nextDue(date: string, cadence: Bill["cadence"]) {
+export function nextDue(
+  date: string,
+  cadence: Bill["cadence"],
+  anchorDay?: number,
+) {
   const [y, m, d] = date.split("-").map(Number);
   if (cadence === "weekly") return day(new Date(y, m - 1, d + 7));
   const dest = new Date(
@@ -191,7 +207,7 @@ export function nextDue(date: string, cadence: Bill["cadence"]) {
       dest.getFullYear(),
       dest.getMonth(),
       Math.min(
-        d,
+        anchorDay || d,
         new Date(dest.getFullYear(), dest.getMonth() + 1, 0).getDate(),
       ),
     ),
@@ -233,9 +249,13 @@ export function categorySpend(ts: Transaction[], id: string) {
 }
 export function available(s: State) {
   const total = balances(s).reduce((n, a) => n + a.balance, 0);
-  const upcoming = s.bills
-    .filter((b) => b.active && b.date <= month() + "-31")
-    .reduce((n, b) => n + b.amount, 0);
+  const upcoming =
+    s.bills
+      .filter((b) => b.active && b.date <= month() + "-31")
+      .reduce((n, b) => n + b.amount, 0) +
+    (s.expectedPayments || [])
+      .filter((e) => e.kind === "expense" && e.status === "expected")
+      .reduce((n, e) => n + e.amount, 0);
   return {
     total,
     upcoming,
@@ -264,7 +284,12 @@ export function payBill(s: State, id: string): State {
     ],
     bills: s.bills.map((x) =>
       x.id === id
-        ? { ...x, date: nextDue(x.date, x.cadence), remindOn: undefined }
+        ? {
+            ...x,
+            date: nextDue(x.date, x.cadence, x.anchorDay),
+            anchorDay: x.anchorDay || Number(x.date.slice(8)),
+            remindOn: undefined,
+          }
         : x,
     ),
   };
@@ -523,6 +548,7 @@ export function validateState(input: unknown): State {
   }
   const account = (x: unknown) => s.accounts.some((a) => a.id === x);
   validateV2(s);
+  validateV3(s);
   if (
     s.shortcuts !== undefined &&
     (!Array.isArray(s.shortcuts) ||

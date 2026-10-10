@@ -207,6 +207,18 @@ export function EditorForm({
             category,
             account: get("account"),
             active: editor.item?.active ?? true,
+            autopay: f.get("autopay") === "on",
+            anchorDay:
+              editor.item?.date === get("date")
+                ? editor.item.anchorDay || Number(get("date").slice(8))
+                : Number(get("date").slice(8)),
+            trialEnd: get("trialEnd") || undefined,
+            priceHistory: [
+              ...(editor.item?.priceHistory || []),
+              ...(editor.item && editor.item.amount !== cash("amount")
+                ? [{ date: day(), amount: editor.item.amount }]
+                : []),
+            ],
           };
           next.bills = item
             ? s.bills.map((x) => (x.id === id ? b : x))
@@ -370,6 +382,34 @@ export function EditorForm({
                 required
               />
             </Field>
+            <div className="date-shortcuts">
+              <button
+                type="button"
+                className="text-button"
+                onClick={(e) => {
+                  const input = e.currentTarget.form?.elements.namedItem(
+                    "date",
+                  ) as HTMLInputElement;
+                  if (input) input.value = day();
+                }}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={(e) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 1);
+                  const input = e.currentTarget.form?.elements.namedItem(
+                    "date",
+                  ) as HTMLInputElement;
+                  if (input) input.value = day(d);
+                }}
+              >
+                Yesterday
+              </button>
+            </div>
             <Field label="Tags (optional)">
               <input
                 name="tags"
@@ -379,48 +419,51 @@ export function EditorForm({
               />
             </Field>
           </div>
-          <Field label="Note (optional)">
-            <textarea
-              name="note"
-              maxLength={2000}
-              placeholder="The little details"
-              defaultValue={draft?.note}
-            />
-          </Field>
-          <label className="check-label shortcut-option">
-            <input type="checkbox" name="shortcut" />
-            <span>
-              Save as a shortcut
-              <small>
-                Reuse these details next time. Nothing is added automatically.
-              </small>
-            </span>
-            <Icon name="Sparkles" size={18} />
-          </label>
-          <div className="receipt-area">
-            {receipt ? (
-              <>
-                <img src={receipt} alt="Attached receipt" />
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setReceipt(undefined)}
-                >
-                  Remove receipt
-                </button>
-              </>
-            ) : (
-              <label className="file-button">
-                <Icon name="Paperclip" />{" "}
-                {busy ? "Preparing receipt…" : "Attach a receipt"}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => void attach(e.target.files?.[0])}
-                />
-              </label>
-            )}
-          </div>
+          <details className="v3-details" open={!!draft?.note || !!receipt}>
+            <summary>More details · notes, receipt, shortcut</summary>
+            <Field label="Note (optional)">
+              <textarea
+                name="note"
+                maxLength={2000}
+                placeholder="The little details"
+                defaultValue={draft?.note}
+              />
+            </Field>
+            <label className="check-label shortcut-option">
+              <input type="checkbox" name="shortcut" />
+              <span>
+                Save as a shortcut
+                <small>
+                  Reuse these details next time. Nothing is added automatically.
+                </small>
+              </span>
+              <Icon name="Sparkles" size={18} />
+            </label>
+            <div className="receipt-area">
+              {receipt ? (
+                <>
+                  <img src={receipt} alt="Attached receipt" />
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setReceipt(undefined)}
+                  >
+                    Remove receipt
+                  </button>
+                </>
+              ) : (
+                <label className="file-button">
+                  <Icon name="Paperclip" />{" "}
+                  {busy ? "Preparing receipt…" : "Attach a receipt"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => void attach(e.target.files?.[0])}
+                  />
+                </label>
+              )}
+            </div>
+          </details>
         </>
       )}
       {editor.type === "account" && (
@@ -585,6 +628,25 @@ export function EditorForm({
             </Field>
             {categoryField}
           </div>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              name="autopay"
+              defaultChecked={editor.item?.autopay}
+            />
+            Paid automatically (Autopay)
+          </label>
+          <p className="form-help">
+            Due payments appear for confirmation when you open Gareeb. Your
+            balance changes only after you confirm the charge.
+          </p>
+          <Field label="Free trial ends (optional)">
+            <input
+              name="trialEnd"
+              type="date"
+              defaultValue={editor.item?.trialEnd}
+            />
+          </Field>
           <p className="form-help">
             Mark paid to record an expense and advance the due date. Upcoming
             reminders appear inside Gareeb.

@@ -1,23 +1,24 @@
-Gareeb v2.0 — good times, clear tabs.
+Gareeb v3.0 — clearer money, calmer screens.
 
-Download **gareeb-android.apk** below. Android 7 or later. Build 7 and newer update in place with the same signing identity; your records stay compatible.
+Download **gareeb-android.apk** below. Update over builds 7 and later; the signing identity and existing records remain compatible.
 
-## New in v2
+## New in v3
 
-- **Together groups:** trips, households and shared meals with 2–30 members, exact equal splits, custom amounts, different payers, partial settlement history, editable expenses, group budgets, archiving and shareable text summaries. Group records stay on this device and are included in full backups. They do not automatically change wallet balances or send money.
-- **Quick entry:** describe a simple expense such as “180 lunch yesterday cash” and review the prefilled entry. Recent merchants make repeat purchases quicker. Parsing runs locally; it is not a general-purpose AI or bank-message importer.
-- **Weekly and monthly budgets:** optional positive rollover from a chosen starting period, with overspending absorbed before future carry. Editing a limit recalculates that budget's history.
-- **Custom categories:** icons, colours and subcategory labels used throughout entry, filtering, charts, rules and budgets. Subcategories keep independent totals.
-- **Where did it go?** A monthly money story with category changes and drill-down to the transactions behind them. Current partial months are clearly distinguished from the previous full month.
-- **Private Android bill reminders:** opt-in local notifications around 9 AM for the next occurrence of up to 64 active bills. No bill names or amounts appear in notification text. Android can delay delivery. Open the app periodically to refresh future occurrences; editing, paying, snoozing or skipping a bill refreshes its schedule. No automatic charges or cancellations.
-- **Device app lock:** fingerprint, face or device credential verification using Android's authentication screen. Requires a device screen lock. Enabled lock hides screenshots and recent-app previews. Lock preference is device-specific and is not restored from a backup.
-- **Encrypted backups:** optional passphrase-protected exports using AES-256-GCM with PBKDF2-SHA256 (310,000 iterations). Keep the passphrase separately; it cannot be recovered. Plain JSON backups remain available. App-lock protection does not encrypt the underlying on-device Preferences database.
-- Optional gentle Gareeb humour. Existing haptics, reduced motion, dark mode, receipts, CSV imports, calendars and shortcuts remain available.
+- **Cleaner mobile UI:** solid header and bottom navigation, theme-aware Android status-bar icons, compact headings and cards, fewer decorative elements, and optional transaction details in an expandable section.
+- **Rebuilt transaction sheets:** one transform/opacity animation path for opening, saving, closing and swipe dismissal. The keyboard-aware sheet stays within the visible viewport. Taps cannot pass through a closing sheet. Reduced motion and haptics remain available.
+- **Autopay inbox:** enable Autopay on a bill to prepare due charges for review when Gareeb opens or resumes. Review the actual amount, confirm paid or mark it as not charged. Expected payments do not change wallet balances. This does not detect bank transactions or charge money.
+- **Recurring income:** salary, allowance and regular payments, with confirmation before wallet balances change. Pause/resume and payment history are included.
+- **Subscriptions:** optional free-trial ending dates with private local reminders, and price history when you edit the amount. Notification delivery depends on Android; open Gareeb periodically to refresh schedules.
+- **Can I afford it?** Plan → Spend check estimates what a purchase leaves over the next 7, 14 or 30 days, subtracting upcoming bills, unconfirmed charges and your configured reserve. It uses all recorded wallet balances and excludes unconfirmed future income.
+- **Stronger shared groups:** percentage and weighted splits with exact rounding, receipt attachments, per-person history, and a one-time option to record your own portion as a wallet expense. Do not use this if you already recorded that expense. Edits to the group do not retroactively edit the linked wallet record; edit it in Activity if needed. Shared settlement records still do not send money or change wallets.
+- **Everyday shortcuts:** Today/Yesterday date buttons, newest/oldest/largest transaction sorting, one-tap filter reset, and a home-page prompt when payments need review.
 
-## Updating older builds
+## Privacy and updating
 
-Build 6 or earlier used temporary signing keys. Export a full backup and save the JSON outside Gareeb, verify it exists, then uninstall the old app. Install this APK, finish initial setup and restore the backup. Never uninstall before saving your backup.
+No signup, ads, analytics trackers or financial-data server. Groups remain local, with shareable summaries and full backup support. Live multi-user sync, receipt OCR and widgets remain follow-up work.
 
-This is a preview APK, not a Play Store release. The published APK uses the durable signing identity introduced in build 7. Source, tests, checksum and build logs are available in this repository.
+App lock protects the UI and hides screenshots/previews; it does not encrypt the underlying Preferences database. Optional encrypted backups remain available. Unconfirmed charges remain estimates until reviewed.
 
-No signup, financial-data server, bank sync, multi-user collaboration, cloud sync, receipt OCR, automatic SMS access or currency conversion. Groups are a local ledger that you can share as a summary. Home-screen widgets, receipt scanning and optional sync remain follow-up work.
+Build 6 or earlier used temporary signing keys. Export a full backup outside Gareeb and verify it exists before uninstalling those older builds. Builds 7 onward update in place.
+
+This is a signed preview APK, not a Play Store release. Source, automated checks, APK checksum and build logs are available in this repository.

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useId,
   useState,
@@ -228,6 +229,53 @@ export function Progress({ value, color }: { value: number; color?: string }) {
     </div>
   );
 }
+const closingSheets = new WeakMap<HTMLElement, Promise<void>>();
+const reducedMotion = () =>
+  document.documentElement.dataset.motion === "reduced" ||
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function closeSheet(backdrop: HTMLElement): Promise<void> {
+  const existing = closingSheets.get(backdrop);
+  if (existing) return existing;
+  const sheet = backdrop.querySelector<HTMLElement>(".modal");
+  if (!sheet || reducedMotion() || !backdrop.getClientRects().length)
+    return Promise.resolve();
+  const computed = getComputedStyle(sheet);
+  const transform = computed.transform,
+    opacity = computed.opacity;
+  for (const animation of sheet.getAnimations()) animation.cancel();
+  for (const animation of backdrop.getAnimations()) animation.cancel();
+  backdrop.style.pointerEvents = "auto";
+  sheet.style.pointerEvents = "none";
+  const result = Promise.all([
+    sheet
+      .animate(
+        [
+          { transform, opacity },
+          {
+            transform: `translate3d(0,${Math.min(sheet.offsetHeight, 100)}px,0)`,
+            opacity: 0,
+          },
+        ],
+        { duration: 190, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
+      )
+      .finished.catch(() => {}),
+    backdrop
+      .animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: 190,
+        fill: "forwards",
+      })
+      .finished.catch(() => {}),
+  ]).then(() => {});
+  closingSheets.set(backdrop, result);
+  return result;
+}
+export async function dismissSheets() {
+  await Promise.all(
+    Array.from(document.querySelectorAll<HTMLElement>(".modal-backdrop")).map(
+      closeSheet,
+    ),
+  );
+}
 export function Modal({
   title,
   children,
@@ -237,33 +285,53 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<number | null>(null);
-  const offset = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [exiting, setExiting] = useState(false);
-  const dismiss = useCallback(() => {
-    if (timer.current) return;
+  const ref = useRef<HTMLDivElement>(null),
+    backdropRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<number | null>(null),
+    offset = useRef(0),
+    draggingAt = useRef(0),
+    dismissing = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const dismiss = useCallback(async () => {
+    if (dismissing.current) return;
+    dismissing.current = true;
     void feedback();
-    setExiting(true);
-    const reduced =
-      document.documentElement.dataset.motion === "reduced" ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    timer.current = setTimeout(onClose, reduced ? 0 : 160);
-  }, [onClose]);
-  useEffect(() => () => clearTimeout(timer.current), []);
+    if (backdropRef.current) await closeSheet(backdropRef.current);
+    onCloseRef.current();
+  }, []);
+  useLayoutEffect(() => {
+    const sheet = ref.current,
+      backdrop = backdropRef.current;
+    if (!sheet || !backdrop || reducedMotion()) return;
+    const animations = [
+      sheet.animate(
+        [
+          { transform: "translate3d(0,64px,0)", opacity: 0 },
+          { transform: "translate3d(0,0,0)", opacity: 1 },
+        ],
+        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" },
+      ),
+      backdrop.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 }),
+    ];
+    return () => animations.forEach((a) => a.cancel());
+  }, []);
   useEffect(() => {
-    const prev = document.activeElement as HTMLElement;
-    const bodyOverflow = document.body.style.overflow;
+    const prev = document.activeElement as HTMLElement,
+      bodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    ref.current?.focus();
+    ref.current?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
+      if (!ref.current?.getClientRects().length) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        void dismiss();
+      }
       if (e.key === "Tab") {
         const els = Array.from(
-          ref.current?.querySelectorAll<HTMLElement>(
+          ref.current.querySelectorAll<HTMLElement>(
             'button,input,select,textarea,[tabindex="0"]',
-          ) || [],
+          ),
         ).filter(
           (e) => !e.hasAttribute("disabled") && e.getClientRects().length > 0,
         );
@@ -283,15 +351,28 @@ export function Modal({
       }
     };
     document.addEventListener("keydown", key);
+    const viewport = window.visualViewport;
+    const resize = () => {
+      if (backdropRef.current) {
+        backdropRef.current.style.height = `${viewport?.height || window.innerHeight}px`;
+        backdropRef.current.style.top = `${viewport?.offsetTop || 0}px`;
+      }
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
     return () => {
       document.body.style.overflow = bodyOverflow;
       document.removeEventListener("keydown", key);
-      prev?.focus();
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+      if (prev?.isConnected) prev.focus({ preventScroll: true });
     };
   }, [dismiss]);
   return (
     <div
-      className={`modal-backdrop ${exiting ? "is-exiting" : ""}`}
+      className="modal-backdrop"
+      ref={backdropRef}
       onClick={(e) => {
         if (e.target === e.currentTarget) dismiss();
       }}
@@ -312,6 +393,8 @@ export function Modal({
             if (offset.current < 5) dismiss();
           }}
           onPointerDown={(e) => {
+            ref.current?.getAnimations().forEach((a) => a.cancel());
+            draggingAt.current = performance.now();
             drag.current = e.clientY;
             offset.current = 0;
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -331,8 +414,27 @@ export function Modal({
             if (drag.current === null) return;
             drag.current = null;
             e.currentTarget.releasePointerCapture(e.pointerId);
-            if (offset.current > 90) dismiss();
-            else ref.current?.style.setProperty("--sheet-drag", "0px");
+            if (
+              offset.current > 90 ||
+              (offset.current > 25 &&
+                offset.current /
+                  Math.max(1, performance.now() - draggingAt.current) >
+                  0.6)
+            )
+              void dismiss();
+            else {
+              ref.current?.animate(
+                [
+                  { transform: `translateY(${offset.current}px)` },
+                  { transform: "translateY(0)" },
+                ],
+                {
+                  duration: reducedMotion() ? 0 : 180,
+                  easing: "cubic-bezier(.2,.8,.2,1)",
+                },
+              );
+              ref.current?.style.setProperty("--sheet-drag", "0px");
+            }
           }}
           onPointerCancel={() => {
             drag.current = null;

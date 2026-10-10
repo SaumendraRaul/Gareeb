@@ -30,6 +30,9 @@ test("shortcuts prefill for review, survive restart, and duplicate without overw
   await add(page);
   await page.getByLabel("Amount", { exact: true }).fill("120");
   await page.getByLabel("What was it for?").fill("Daily train");
+  await page
+    .getByText("More details · notes, receipt, shortcut", { exact: true })
+    .click();
   await page.getByLabel("Save as a shortcut", { exact: false }).check();
   await page.getByRole("button", { name: "Save expense" }).click();
   await page.reload();

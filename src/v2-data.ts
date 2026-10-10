@@ -14,6 +14,9 @@ export type GroupExpense = {
   amount: number;
   payer: string;
   shares: { member: string; amount: number }[];
+  splitMode?: "equal" | "custom" | "percentage" | "weighted";
+  receipt?: string;
+  walletTransaction?: string;
   date: string;
 };
 export type Settlement = {

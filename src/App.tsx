@@ -1,6 +1,8 @@
+import { collectExpected } from "./v3";
+import { SpendCheck, RecurringHub } from "./V3Features";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { App as NativeApp } from "@capacitor/app";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import {
   available,
@@ -25,7 +27,16 @@ import {
   type Transaction,
 } from "./model";
 import { download, loadState, persist } from "./storage";
-import { Empty, Field, Icon, Logo, Modal, Progress, Section } from "./ui";
+import {
+  Empty,
+  Field,
+  Icon,
+  Logo,
+  Modal,
+  Progress,
+  Section,
+  dismissSheets,
+} from "./ui";
 import { Daily, Donut, Trend, IncomeSpark } from "./charts";
 import { EditorForm, type Editor } from "./Forms";
 import {
@@ -72,6 +83,7 @@ export default function App() {
   const [undo, setUndo] = useState<State | null>(null);
   const [hide, setHide] = useState(false);
   const [search, setSearch] = useState("");
+  const [activitySort, setActivitySort] = useState("newest");
   const [typeFilter, setTypeFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
@@ -91,8 +103,13 @@ export default function App() {
   const lock = useRef(false);
   useEffect(() => {
     void loadState()
-      .then((v) => {
-        setS(v);
+      .then(async (v) => {
+        const next = v ? collectExpected(v) : v;
+        if (next && next !== v) {
+          validateState(next);
+          await persist(next);
+        }
+        setS(next);
         setLoaded(true);
       })
       .catch(() => {
@@ -104,6 +121,13 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = s?.settings.theme || "light";
+    if (Capacitor.isNativePlatform())
+      void SystemBars.setStyle({
+        style:
+          s?.settings.theme === "dark"
+            ? SystemBarsStyle.Dark
+            : SystemBarsStyle.Light,
+      }).catch(() => {});
   }, [s?.settings.theme]);
   useEffect(() => {
     configureHaptics(s?.settings.haptics !== false);
@@ -122,7 +146,8 @@ export default function App() {
     }, 6500);
     return () => clearTimeout(timer);
   }, [notice]);
-  const close = useCallback(() => {
+  const close = useCallback(async () => {
+    await dismissSheets();
     setEditor(null);
     setConfirm(null);
     setShowAlerts(false);
@@ -147,13 +172,14 @@ export default function App() {
     lock.current = true;
     setSaving(true);
     try {
+      next = collectExpected(next);
       validateState(next);
       await persist(next);
       setUndo(canUndo ? s : null);
       setS(next);
       setNotice(message);
       void feedback("success");
-      close();
+      await close();
       return true;
     } catch (e) {
       setNotice("Could not save: " + (e as Error).message);
@@ -171,6 +197,45 @@ export default function App() {
         setNotice("Reminder update: " + (e as Error).message),
       );
   }, [s?.bills, s?.settings.reminders, s?.demo]);
+  const latestState = useRef(s);
+  latestState.current = s;
+  useEffect(() => {
+    async function refresh() {
+      const current = latestState.current;
+      if (!current || lock.current || document.visibilityState === "hidden")
+        return;
+      lock.current = true;
+      try {
+        const next = collectExpected(current);
+        if (next === current) return;
+        validateState(next);
+        await persist(next);
+        latestState.current = next;
+        setS(next);
+      } catch (e) {
+        setNotice(
+          "Scheduled payments could not be refreshed: " + (e as Error).message,
+        );
+      } finally {
+        lock.current = false;
+      }
+    }
+    const visible = () => {
+      void refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
+    const timer = setInterval(visible, 60000);
+    const listener = Capacitor.isNativePlatform()
+      ? NativeApp.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) void refresh();
+        })
+      : null;
+    return () => {
+      document.removeEventListener("visibilitychange", visible);
+      clearInterval(timer);
+      void listener?.then((l) => l.remove());
+    };
+  }, []);
   function go(next: Tab) {
     setTab(next);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -198,6 +263,8 @@ export default function App() {
       (s.accounts.length === 1 ||
         s.transactions.some((t) => t.account === id || t.toAccount === id) ||
         s.bills.some((b) => b.account === id) ||
+        (s.recurringIncome || []).some((r) => r.account === id) ||
+        (s.expectedPayments || []).some((e) => e.account === id) ||
         (s.shortcuts || []).some((t) => t.account === id || t.toAccount === id))
     ) {
       setNotice(
@@ -408,6 +475,21 @@ export default function App() {
   const budgetSpent = budgets.reduce((n, b) => n + b.spent, 0);
   const sorted = [...ts].sort((a, b) => b.date.localeCompare(a.date));
   const alerts = [
+    ...(s.expectedPayments || [])
+      .filter((e) => e.status === "expected")
+      .map(
+        (e) =>
+          `${e.title}: expected ${e.kind}, ready to review in Plan → Bills.`,
+      ),
+    ...s.bills
+      .filter(
+        (b) =>
+          b.active &&
+          b.trialEnd &&
+          b.trialEnd >= day() &&
+          b.trialEnd <= day(new Date(Date.now() + 7 * 86400000)),
+      )
+      .map((b) => `${b.name}: free trial ends ${b.trialEnd}.`),
     ...due
       .filter(
         (b) =>
@@ -1148,6 +1230,36 @@ export default function App() {
                   </select>
                 </div>
                 <div className="filter-footer">
+                  <select
+                    aria-label="Sort transactions"
+                    value={activitySort}
+                    onChange={(e) => setActivitySort(e.target.value)}
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="largest">Largest amount</option>
+                  </select>
+                  {(search ||
+                    typeFilter !== "all" ||
+                    catFilter !== "all" ||
+                    accountFilter !== "all" ||
+                    reviewFilter ||
+                    dateFilter) && (
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        setSearch("");
+                        setTypeFilter("all");
+                        setCatFilter("all");
+                        setAccountFilter("all");
+                        setReviewFilter(false);
+                        setDateFilter("");
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+
                   <label className="check-label">
                     <input
                       type="checkbox"
@@ -1177,19 +1289,27 @@ export default function App() {
                   </button>
                 </div>
                 {transactions(
-                  sorted.filter(
-                    (t) =>
-                      (!dateFilter || t.date === dateFilter) &&
-                      (typeFilter === "all" || t.kind === typeFilter) &&
-                      (catFilter === "all" || t.category === catFilter) &&
-                      (accountFilter === "all" ||
-                        t.account === accountFilter ||
-                        t.toAccount === accountFilter) &&
-                      (!reviewFilter || !t.reviewed) &&
-                      `${t.title} ${t.note} ${t.tags}`
-                        .toLowerCase()
-                        .includes(search.toLowerCase()),
-                  ),
+                  [...sorted]
+                    .sort((a, b) =>
+                      activitySort === "largest"
+                        ? b.amount - a.amount
+                        : activitySort === "oldest"
+                          ? a.date.localeCompare(b.date)
+                          : b.date.localeCompare(a.date),
+                    )
+                    .filter(
+                      (t) =>
+                        (!dateFilter || t.date === dateFilter) &&
+                        (typeFilter === "all" || t.kind === typeFilter) &&
+                        (catFilter === "all" || t.category === catFilter) &&
+                        (accountFilter === "all" ||
+                          t.account === accountFilter ||
+                          t.toAccount === accountFilter) &&
+                        (!reviewFilter || !t.reviewed) &&
+                        `${t.title} ${t.note} ${t.tags}`
+                          .toLowerCase()
+                          .includes(search.toLowerCase()),
+                    ),
                 )}
               </Section>
               <p className="quiet-note">
@@ -1407,18 +1527,21 @@ export default function App() {
             <>
               <div className="plan-toolbar">
                 <div className="segmented plan-tabs">
-                  {["Budgets", "Goals", "Bills", "Together"].map((t) => (
-                    <button
-                      key={t}
-                      className={planTab === t ? "selected" : ""}
-                      onClick={() => setPlanTab(t)}
-                    >
-                      {t}
-                    </button>
-                  ))}
+                  {["Budgets", "Goals", "Bills", "Together", "Spend check"].map(
+                    (t) => (
+                      <button
+                        key={t}
+                        className={planTab === t ? "selected" : ""}
+                        onClick={() => setPlanTab(t)}
+                      >
+                        {t}
+                      </button>
+                    ),
+                  )}
                 </div>
                 {planTab === "Budgets" && monthPicker}
               </div>
+              {planTab === "Spend check" && <SpendCheck s={s} cash={cash} />}
               {planTab === "Budgets" && (
                 <SmartBudgets
                   s={s}
@@ -1502,189 +1625,215 @@ export default function App() {
                 </>
               )}
               {planTab === "Bills" && (
-                <Section
-                  title="No more “oh, that’s today.”"
-                  sub="Your bill and subscription calendar"
-                  action={newButton("Add bill", "bill")}
-                >
-                  <div className="bill-total">
-                    <span>Monthly equivalent</span>
-                    <strong>
-                      {cash(
-                        Math.round(
-                          s.bills
-                            .filter((b) => b.active)
-                            .reduce(
-                              (n, b) =>
-                                n +
-                                b.amount *
-                                  (b.cadence === "yearly"
-                                    ? 1 / 12
-                                    : b.cadence === "weekly"
-                                      ? 52 / 12
-                                      : 1),
-                              0,
-                            ),
-                        ),
-                      )}
-                    </strong>
-                    <small>
-                      Across {s.bills.filter((b) => b.active).length} active
-                      recurring payments
-                    </small>
-                  </div>
-                  <RecurringCosts s={s} cash={cash} />
-                  {[...s.bills]
-                    .sort((a, b) => a.date.localeCompare(b.date))
-                    .map((b) => (
-                      <div
-                        className={`bill-row ${!b.active ? "paused" : ""}`}
-                        key={b.id}
-                      >
-                        <span
-                          className="category-icon"
-                          style={{
-                            color: cat(b.category, s).color,
-                            background: cat(b.category, s).tint,
-                          }}
+                <>
+                  <RecurringHub s={s} onSave={save} cash={cash} />
+                  <Section
+                    title="No more “oh, that’s today.”"
+                    sub="Your bill and subscription calendar"
+                    action={newButton("Add bill", "bill")}
+                  >
+                    <div className="bill-total">
+                      <span>Monthly equivalent</span>
+                      <strong>
+                        {cash(
+                          Math.round(
+                            s.bills
+                              .filter((b) => b.active)
+                              .reduce(
+                                (n, b) =>
+                                  n +
+                                  b.amount *
+                                    (b.cadence === "yearly"
+                                      ? 1 / 12
+                                      : b.cadence === "weekly"
+                                        ? 52 / 12
+                                        : 1),
+                                0,
+                              ),
+                          ),
+                        )}
+                      </strong>
+                      <small>
+                        Across {s.bills.filter((b) => b.active).length} active
+                        recurring payments
+                      </small>
+                    </div>
+                    <RecurringCosts s={s} cash={cash} />
+                    {[...s.bills]
+                      .sort((a, b) => a.date.localeCompare(b.date))
+                      .map((b) => (
+                        <div
+                          className={`bill-row ${!b.active ? "paused" : ""}`}
+                          key={b.id}
                         >
-                          <Icon name={cat(b.category, s).icon} />
-                        </span>
-                        <div className="bill-info">
-                          <strong>{b.name}</strong>
-                          <small>
-                            {b.cadence} ·{" "}
-                            {b.active
-                              ? (b.date < day() ? "Overdue · " : "Due ") +
-                                new Date(
-                                  b.date + "T12:00:00",
-                                ).toLocaleDateString("en", {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                })
-                              : "Paused"}
-                          </small>
-                        </div>
-                        <strong>{cash(b.amount)}</strong>
-                        <div className="bill-actions">
-                          <button
-                            className="secondary small"
-                            disabled={!b.active}
-                            onClick={() =>
-                              setConfirm({
-                                title: `Mark ${b.name} paid?`,
-                                description: `Records a ${cash(b.amount)} expense today and advances its due date by one ${b.cadence === "monthly" ? "month" : b.cadence === "weekly" ? "week" : "year"}.`,
-                                label: "Record payment",
-                                action: () =>
-                                  void save(
-                                    payBill(s, b.id),
-                                    "Payment recorded. Next due date updated.",
-                                  ),
-                              })
-                            }
+                          <span
+                            className="category-icon"
+                            style={{
+                              color: cat(b.category, s).color,
+                              background: cat(b.category, s).tint,
+                            }}
                           >
-                            Mark paid
-                          </button>
-                          {b.active && (
-                            <>
-                              <button
-                                className="text-button"
-                                onClick={() => {
-                                  const tomorrow = new Date(
-                                    ((b.remindOn || b.date) > day()
-                                      ? b.remindOn || b.date
-                                      : day()) + "T12:00:00",
-                                  );
-                                  tomorrow.setDate(tomorrow.getDate() + 1);
-                                  void save(
-                                    {
-                                      ...s,
-                                      bills: s.bills.map((x) =>
-                                        x.id === b.id
-                                          ? { ...x, remindOn: day(tomorrow) }
-                                          : x,
-                                      ),
-                                    },
-                                    `Reminder moved to ${day(tomorrow)}. Enable device reminders in Settings for a notification.`,
-                                  );
-                                }}
-                              >
-                                Snooze reminder
-                              </button>
-                              <button
-                                className="text-button"
-                                onClick={() =>
-                                  setConfirm({
-                                    title: `Skip ${b.name} this time?`,
-                                    description:
-                                      "Moves the next due date forward without recording a payment.",
-                                    label: "Skip occurrence",
-                                    action: () =>
-                                      void save(
-                                        {
-                                          ...s,
-                                          bills: s.bills.map((x) =>
-                                            x.id === b.id
-                                              ? {
-                                                  ...x,
-                                                  date: nextDue(
-                                                    x.date,
-                                                    x.cadence,
-                                                  ),
-                                                  remindOn: undefined,
-                                                }
-                                              : x,
-                                          ),
-                                        },
-                                        "Occurrence skipped.",
-                                      ),
+                            <Icon name={cat(b.category, s).icon} />
+                          </span>
+                          <div className="bill-info">
+                            <strong>
+                              {b.name}{" "}
+                              {b.autopay && (
+                                <span className="count-pill">Autopay</span>
+                              )}
+                            </strong>
+                            {b.trialEnd && b.trialEnd >= day() && (
+                              <small>Trial ends {b.trialEnd}</small>
+                            )}
+                            {!!b.priceHistory?.length && (
+                              <details className="price-history">
+                                <summary>Price history</summary>
+                                {b.priceHistory.map((p, i) => (
+                                  <small key={i}>
+                                    {p.date} · Previously {cash(p.amount)}
+                                  </small>
+                                ))}
+                              </details>
+                            )}
+                            <small>
+                              {b.cadence} ·{" "}
+                              {b.active
+                                ? (b.date < day() ? "Overdue · " : "Due ") +
+                                  new Date(
+                                    b.date + "T12:00:00",
+                                  ).toLocaleDateString("en", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
                                   })
-                                }
-                              >
-                                Skip occurrence
-                              </button>
-                            </>
-                          )}
-                          <button
-                            className="icon-button"
-                            aria-label={`Edit ${b.name}`}
-                            onClick={() => setEditor({ type: "bill", item: b })}
-                          >
-                            <Icon name="Pencil" size={16} />
-                          </button>
-                          <button
-                            className="text-button"
-                            onClick={() =>
-                              void save(
-                                {
-                                  ...s,
-                                  bills: s.bills.map((x) =>
-                                    x.id === b.id
-                                      ? { ...x, active: !x.active }
-                                      : x,
-                                  ),
-                                },
-                                b.active ? "Bill paused." : "Bill resumed.",
-                              )
-                            }
-                          >
-                            {b.active ? "Pause" : "Resume"}
-                          </button>
+                                : "Paused"}
+                            </small>
+                          </div>
+                          <strong>{cash(b.amount)}</strong>
+                          <div className="bill-actions">
+                            <button
+                              className="secondary small"
+                              disabled={!b.active}
+                              style={
+                                b.autopay ? { display: "none" } : undefined
+                              }
+                              onClick={() =>
+                                setConfirm({
+                                  title: `Mark ${b.name} paid?`,
+                                  description: `Records a ${cash(b.amount)} expense today and advances its due date by one ${b.cadence === "monthly" ? "month" : b.cadence === "weekly" ? "week" : "year"}.`,
+                                  label: "Record payment",
+                                  action: () =>
+                                    void save(
+                                      payBill(s, b.id),
+                                      "Payment recorded. Next due date updated.",
+                                    ),
+                                })
+                              }
+                            >
+                              Mark paid
+                            </button>
+                            {b.active && (
+                              <>
+                                <button
+                                  className="text-button"
+                                  onClick={() => {
+                                    const tomorrow = new Date(
+                                      ((b.remindOn || b.date) > day()
+                                        ? b.remindOn || b.date
+                                        : day()) + "T12:00:00",
+                                    );
+                                    tomorrow.setDate(tomorrow.getDate() + 1);
+                                    void save(
+                                      {
+                                        ...s,
+                                        bills: s.bills.map((x) =>
+                                          x.id === b.id
+                                            ? { ...x, remindOn: day(tomorrow) }
+                                            : x,
+                                        ),
+                                      },
+                                      `Reminder moved to ${day(tomorrow)}. Enable device reminders in Settings for a notification.`,
+                                    );
+                                  }}
+                                >
+                                  Snooze reminder
+                                </button>
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    setConfirm({
+                                      title: `Skip ${b.name} this time?`,
+                                      description:
+                                        "Moves the next due date forward without recording a payment.",
+                                      label: "Skip occurrence",
+                                      action: () =>
+                                        void save(
+                                          {
+                                            ...s,
+                                            bills: s.bills.map((x) =>
+                                              x.id === b.id
+                                                ? {
+                                                    ...x,
+                                                    date: nextDue(
+                                                      x.date,
+                                                      x.cadence,
+                                                    ),
+                                                    remindOn: undefined,
+                                                  }
+                                                : x,
+                                            ),
+                                          },
+                                          "Occurrence skipped.",
+                                        ),
+                                    })
+                                  }
+                                >
+                                  Skip occurrence
+                                </button>
+                              </>
+                            )}
+                            <button
+                              className="icon-button"
+                              aria-label={`Edit ${b.name}`}
+                              onClick={() =>
+                                setEditor({ type: "bill", item: b })
+                              }
+                            >
+                              <Icon name="Pencil" size={16} />
+                            </button>
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                void save(
+                                  {
+                                    ...s,
+                                    bills: s.bills.map((x) =>
+                                      x.id === b.id
+                                        ? { ...x, active: !x.active }
+                                        : x,
+                                    ),
+                                  },
+                                  b.active ? "Bill paused." : "Bill resumed.",
+                                )
+                              }
+                            >
+                              {b.active ? "Pause" : "Resume"}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  {!s.bills.length && (
-                    <Empty
-                      title="A calmer calendar"
-                      description="Keep rent, subscriptions, and recurring bills in view."
-                    />
-                  )}
-                  <p className="quiet-note">
-                    Enable private device reminders in Settings. Bills are never
-                    charged or cancelled automatically.
-                  </p>
-                </Section>
+                      ))}
+                    {!s.bills.length && (
+                      <Empty
+                        title="A calmer calendar"
+                        description="Keep rent, subscriptions, and recurring bills in view."
+                      />
+                    )}
+                    <p className="quiet-note">
+                      Enable private device reminders in Settings. Bills are
+                      never charged or cancelled automatically.
+                    </p>
+                  </Section>
+                </>
               )}
               {planTab === "Together" && (
                 <Groups s={s} onSave={save} onNotice={setNotice} cash={cash} />
@@ -2124,7 +2273,7 @@ export default function App() {
               <Icon name="Sprout" size={15} /> A little mindful. A lot more
               free.
             </span>
-            <span>Gareeb · v2.0</span>
+            <span>Gareeb · v3.0</span>
           </footer>
         </main>
       </div>

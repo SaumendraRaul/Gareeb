@@ -81,3 +81,11 @@ Export a template in Settings. Required columns: `date,title,type,amount`. Optio
 ## V2 checks
 
 V2 tests cover exact shared splits, partial and excessive settlements, rollover periods, custom-category backup validation, currency-aware quick entry, encrypted backup tampering, and reminder privacy. Browser checks exercise the full shared-expense, category, encryption and storage-failure flows. Native checks include updating from build 8, group persistence, notification scheduling/cancellation, and device-credential lock/unlock.
+
+## V3
+
+V3 adds a cleaner mobile header/navigation, theme-aware Android system bars, compositor-driven sheets, keyboard-aware sizing and expandable transaction details. Plan → Bills includes an Autopay payment inbox, recurring income, trial-end reminders and subscription price history. Plan → Spend check estimates money left after a purchase, scheduled expenses and the reserve.
+
+Shared groups now support percentage/weighted splits, receipts, per-person history and one-time wallet recording of your own share. Linked wallet records are independent once recorded; group edits do not silently rewrite them. Extra quality-of-life controls include Today/Yesterday, transaction sorting and filter reset.
+
+Autopay generates **expected** payments when the app opens/resumes, not bank-confirmed transactions or background charges. Confirmation creates the actual wallet entry. Existing backups remain compatible. V3 checks cover occurrence deduplication, missed renewals, confirmed vs expected balances, exact weighted rounding, own-share duplicate prevention, and trial reminder privacy. Native testing upgrades from build 10 and checks light chrome, repeated sheets and the payment inbox.

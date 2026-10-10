@@ -1,5 +1,6 @@
+import { weightedShares, recordOwnShare } from "./v3";
 import { useState, type FormEvent } from "react";
-import { cents, day, money, uid, type State } from "./model";
+import { cents, day, money, uid, allCategories, type State } from "./model";
 import {
   groupBalances,
   settlementsFor,
@@ -27,12 +28,14 @@ type Sheet =
       to: string;
       amount: number;
     }
+  | { kind: "wallet"; group: ExpenseGroup; expense: GroupExpense }
   | { kind: "delete"; group: ExpenseGroup; id: string; settlement?: boolean };
 export function Groups({ s, onSave, onNotice, cash }: Props) {
   const [selected, setSelected] = useState<string | null>(null),
     [sheet, setSheet] = useState<Sheet | null>(null),
     [archived, setArchived] = useState(false),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [memberFilter, setMemberFilter] = useState("all");
   const groups = s.groups || [],
     g = groups.find((g) => g.id === selected);
   async function saveGroup(group: ExpenseGroup, message: string) {
@@ -302,8 +305,28 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
             )}
           </section>
           <section className="v2-panel">
-            <h3>The shared story</h3>
+            <div className="v2-section-heading">
+              <h3>Shared history</h3>
+              <select
+                aria-label="History for person"
+                value={memberFilter}
+                onChange={(e) => setMemberFilter(e.target.value)}
+              >
+                <option value="all">Everyone</option>
+                {g.members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             {[...g.expenses]
+              .filter(
+                (e) =>
+                  memberFilter === "all" ||
+                  e.payer === memberFilter ||
+                  e.shares.some((x) => x.member === memberFilter),
+              )
               .sort((a, b) => b.date.localeCompare(a.date))
               .map((e) => (
                 <div className="group-history" key={e.id}>
@@ -324,6 +347,20 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
                     </small>
                   </button>
                   <strong>{cash(e.amount)}</strong>
+                  {!g.archived && !e.walletTransaction && (
+                    <button
+                      className="text-button"
+                      aria-label={`Record my share of ${e.title}`}
+                      onClick={() =>
+                        setSheet({ kind: "wallet", group: g, expense: e })
+                      }
+                    >
+                      My share
+                    </button>
+                  )}
+                  {e.walletTransaction && (
+                    <small className="wallet-linked">Wallet recorded</small>
+                  )}
                   {!g.archived && (
                     <button
                       className="icon-button"
@@ -342,35 +379,42 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
                 Your first shared expense starts the story.
               </p>
             )}
-            {g.settlements.map((p) => (
-              <div className="group-history" key={p.id}>
-                <Icon name="CircleCheck" />
-                <span className="group-history-main">
-                  <b>
-                    {g.members.find((m) => m.id === p.from)?.name} →{" "}
-                    {g.members.find((m) => m.id === p.to)?.name}
-                  </b>
-                  <small>Payment recorded · {p.date}</small>
-                </span>
-                <strong>{cash(p.amount)}</strong>
-                {!g.archived && (
-                  <button
-                    className="icon-button"
-                    aria-label="Delete recorded payment"
-                    onClick={() =>
-                      setSheet({
-                        kind: "delete",
-                        group: g,
-                        id: p.id,
-                        settlement: true,
-                      })
-                    }
-                  >
-                    <Icon name="Trash2" size={16} />
-                  </button>
-                )}
-              </div>
-            ))}
+            {g.settlements
+              .filter(
+                (p) =>
+                  memberFilter === "all" ||
+                  p.from === memberFilter ||
+                  p.to === memberFilter,
+              )
+              .map((p) => (
+                <div className="group-history" key={p.id}>
+                  <Icon name="CircleCheck" />
+                  <span className="group-history-main">
+                    <b>
+                      {g.members.find((m) => m.id === p.from)?.name} →{" "}
+                      {g.members.find((m) => m.id === p.to)?.name}
+                    </b>
+                    <small>Payment recorded · {p.date}</small>
+                  </span>
+                  <strong>{cash(p.amount)}</strong>
+                  {!g.archived && (
+                    <button
+                      className="icon-button"
+                      aria-label="Delete recorded payment"
+                      onClick={() =>
+                        setSheet({
+                          kind: "delete",
+                          group: g,
+                          id: p.id,
+                          settlement: true,
+                        })
+                      }
+                    >
+                      <Icon name="Trash2" size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
           </section>
           <button
             className="text-button"
@@ -390,8 +434,8 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
       )}
       <p className="quiet-note">
         Groups are kept on this device and included in full backups. Shared
-        entries and settlements do not change your wallet balances. Record
-        wallet movements separately when needed.
+        entries and settlements do not automatically change wallets. “My share”
+        lets you record your portion once. Payments lent to others are separate.
       </p>
       {sheet && (
         <Modal
@@ -406,7 +450,9 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
                   : "Add shared expense"
                 : sheet.kind === "settle"
                   ? "Record a payment"
-                  : "Remove this record?"
+                  : sheet.kind === "wallet"
+                    ? "Record my share"
+                    : "Remove this record?"
           }
           onClose={() => {
             if (!busy) setSheet(null);
@@ -441,6 +487,14 @@ export function Groups({ s, onSave, onNotice, cash }: Props) {
               onSave={(g) =>
                 saveGroup(g, "Payment recorded. A little more even.")
               }
+            />
+          )}
+          {sheet.kind === "wallet" && (
+            <WalletShareForm
+              s={s}
+              sheet={sheet}
+              onSave={onSave}
+              onDone={() => setSheet(null)}
             />
           )}
           {sheet.kind === "delete" && (
@@ -613,16 +667,32 @@ function SharedExpenseForm({
   const [value, setValue] = useState(
       expense ? String(expense.amount / 100) : "",
     ),
-    [mode, setMode] = useState<"equal" | "custom">(
+    [mode, setMode] = useState<"equal" | "custom" | "percentage" | "weighted">(
       expense ? "custom" : "equal",
     ),
     [members, setMembers] = useState(
       expense?.shares.map((x) => x.member) || group.members.map((m) => m.id),
     ),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [receipt, setReceipt] = useState(expense?.receipt),
+    [attaching, setAttaching] = useState(false),
+    [weights, setWeights] = useState<Record<string, string>>({});
   let preview: { member: string; amount: number }[] = [];
   try {
-    preview = splitEvenly(cents(value), members);
+    preview =
+      mode === "percentage" || mode === "weighted"
+        ? weightedShares(
+            cents(value),
+            members.map((member) => ({
+              member,
+              weight: Math.round(
+                Number(weights[member] || (mode === "weighted" ? "1" : "0")) *
+                  100,
+              ),
+            })),
+            mode === "percentage",
+          )
+        : splitEvenly(cents(value), members);
   } catch {
     /* Amount is still being entered. */
   }
@@ -635,10 +705,23 @@ function SharedExpenseForm({
         shares =
           mode === "equal"
             ? splitEvenly(amount, members)
-            : members.map((member) => {
-                const v = String(f.get("share-" + member) || "0");
-                return { member, amount: Number(v) === 0 ? 0 : cents(v) };
-              });
+            : mode === "percentage" || mode === "weighted"
+              ? weightedShares(
+                  amount,
+                  members.map((member) => ({
+                    member,
+                    weight: Math.round(
+                      Number(
+                        weights[member] || (mode === "weighted" ? "1" : "0"),
+                      ) * 100,
+                    ),
+                  })),
+                  mode === "percentage",
+                )
+              : members.map((member) => {
+                  const v = String(f.get("share-" + member) || "0");
+                  return { member, amount: Number(v) === 0 ? 0 : cents(v) };
+                });
       if (
         !members.length ||
         shares.reduce((n, x) => n + x.amount, 0) !== amount
@@ -647,6 +730,9 @@ function SharedExpenseForm({
       const date = String(f.get("date"));
       if (date > day()) throw Error("Record payments dated today or earlier.");
       await onSave({
+        ...expense,
+        receipt,
+        splitMode: mode,
         id: expense?.id || uid(),
         title: String(f.get("title")).trim(),
         amount,
@@ -678,7 +764,6 @@ function SharedExpenseForm({
           min="0.01"
           step="0.01"
           required
-          autoFocus
         />
       </Field>
       <div className="form-grid">
@@ -719,6 +804,20 @@ function SharedExpenseForm({
         >
           Custom amounts
         </button>
+        <button
+          type="button"
+          className={mode === "percentage" ? "selected" : ""}
+          onClick={() => setMode("percentage")}
+        >
+          Percentages
+        </button>
+        <button
+          type="button"
+          className={mode === "weighted" ? "selected" : ""}
+          onClick={() => setMode("weighted")}
+        >
+          Shares
+        </button>
       </div>
       <div className="share-members">
         {group.members.map((m) => (
@@ -742,6 +841,24 @@ function SharedExpenseForm({
                 <strong>
                   {cash(preview.find((p) => p.member === m.id)?.amount || 0)}
                 </strong>
+              ) : mode === "percentage" || mode === "weighted" ? (
+                <div className="weighted-input">
+                  <input
+                    aria-label={`${m.name} ${mode === "percentage" ? "percent" : "weight"}`}
+                    type="number"
+                    min="0"
+                    max={mode === "percentage" ? "100" : "10000"}
+                    step="0.01"
+                    value={weights[m.id] || (mode === "weighted" ? "1" : "")}
+                    onChange={(e) =>
+                      setWeights({ ...weights, [m.id]: e.target.value })
+                    }
+                  />
+                  <small>
+                    {mode === "percentage" ? "%" : "shares"} ·{" "}
+                    {cash(preview.find((p) => p.member === m.id)?.amount || 0)}
+                  </small>
+                </div>
               ) : (
                 <input
                   name={"share-" + m.id}
@@ -761,15 +878,88 @@ function SharedExpenseForm({
         ))}
       </div>
       <p className="form-help">
-        Equal splits distribute any remaining pennies in the order selected. The
-        payer can be excluded from the split.
+        {mode === "percentage"
+          ? "Percentages must total 100%."
+          : mode === "weighted"
+            ? "Use weights such as 3 nights and 1 night. Exact amounts are shown above."
+            : "Equal splits distribute remaining pennies in the order selected. The payer can be excluded."}
       </p>
       {error && (
         <p role="alert" className="form-error">
           {error}
         </p>
       )}
-      <button className="primary full-width" disabled={busy}>
+      {expense?.walletTransaction && (
+        <p className="form-help">
+          Your wallet share was recorded separately. Editing this group expense
+          does not change that wallet transaction; edit it in Activity if
+          needed.
+        </p>
+      )}
+      <details className="v3-details" open={!!receipt}>
+        <summary>Receipt attachment</summary>
+        {receipt ? (
+          <>
+            <img
+              className="shared-receipt"
+              src={receipt}
+              alt="Shared expense receipt"
+            />
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setReceipt(undefined)}
+            >
+              Remove receipt
+            </button>
+          </>
+        ) : (
+          <label className="file-button">
+            {attaching ? "Preparing image…" : "Attach receipt"}
+            <input
+              type="file"
+              aria-label="Shared receipt"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={attaching}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setAttaching(true);
+                try {
+                  if (
+                    !["image/jpeg", "image/png", "image/webp"].includes(
+                      file.type,
+                    ) ||
+                    file.size > 10e6
+                  )
+                    throw Error("Choose a JPG, PNG or WebP under 10 MB.");
+                  const bitmap = await createImageBitmap(file),
+                    canvas = document.createElement("canvas"),
+                    scale = Math.min(
+                      1,
+                      1200 / Math.max(bitmap.width, bitmap.height),
+                    );
+                  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+                  canvas.height = Math.max(
+                    1,
+                    Math.round(bitmap.height * scale),
+                  );
+                  canvas
+                    .getContext("2d")!
+                    .drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                  bitmap.close();
+                  setReceipt(canvas.toDataURL("image/jpeg", 0.75));
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setAttaching(false);
+                }
+              }}
+            />
+          </label>
+        )}
+      </details>
+      <button className="primary full-width" disabled={busy || attaching}>
         Save shared expense
       </button>
     </form>
@@ -831,6 +1021,97 @@ function PaymentForm({
       )}
       <button className="primary full-width" disabled={busy}>
         Confirm payment received
+      </button>
+    </form>
+  );
+}
+
+function WalletShareForm({
+  s,
+  sheet,
+  onSave,
+  onDone,
+}: {
+  s: State;
+  sheet: Extract<Sheet, { kind: "wallet" }>;
+  onSave: Props["onSave"];
+  onDone: () => void;
+}) {
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const f = new FormData(e.currentTarget);
+      const next = recordOwnShare(
+        s,
+        sheet.group,
+        sheet.expense.id,
+        String(f.get("member")),
+        String(f.get("account")),
+        String(f.get("category")),
+      );
+      if (await onSave(next, "Your share was recorded once in your wallet."))
+        onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="v2-form" onSubmit={submit}>
+      <p className="form-help">
+        Record only your portion as a personal expense. Do this only if it is
+        not already in Activity. This does not record money you lent to others
+        or settle the group.
+      </p>
+      <Field label="Which person are you?">
+        <select name="member">
+          {sheet.group.members
+            .filter((m) =>
+              sheet.expense.shares.some(
+                (x) => x.member === m.id && x.amount > 0,
+              ),
+            )
+            .map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} ·{" "}
+                {money(
+                  sheet.expense.shares.find((x) => x.member === m.id)!.amount,
+                  s.settings.currency,
+                )}
+              </option>
+            ))}
+        </select>
+      </Field>
+      <Field label="Wallet for my share">
+        <select name="account">
+          {s.accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Category for my share">
+        <select name="category">
+          {allCategories(s).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      <button className="primary" disabled={busy}>
+        Record my share once
       </button>
     </form>
   );

@@ -183,7 +183,7 @@ try {
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-        await expect(page.locator(".page-footer")).toContainText("v2.0");
+        await expect(page.locator(".page-footer")).toContainText("v3.0");
         await expect(
           page.getByRole("region", { name: "Transaction shortcuts" }),
         ).toBeVisible();
@@ -191,7 +191,7 @@ try {
     );
   if (previous && process.env.PREVIOUS_STABLE === "true")
     await check(
-      "V1 to V2 update preserves real saved records without uninstall",
+      "V2 to V3 update preserves real saved records without uninstall",
       async () => {
         await device.shell("am force-stop " + pkg);
         await install(apk, "updated");
@@ -200,7 +200,7 @@ try {
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-        await expect(page.locator(".page-footer")).toContainText("v2.0");
+        await expect(page.locator(".page-footer")).toContainText("v3.0");
       },
     );
   await check("Stable-signed replacement preserves saved records", async () => {
@@ -211,7 +211,7 @@ try {
       page.getByRole("heading", { name: "Hey Android QA" }),
     ).toBeVisible();
     await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-    await expect(page.locator(".page-footer")).toContainText("v2.0");
+    await expect(page.locator(".page-footer")).toContainText("v3.0");
   });
   await check(
     "Force-stop and offline relaunch retain the saved expense",
@@ -285,6 +285,9 @@ try {
         .locator(".transaction")
         .filter({ hasText: "Android coffee" })
         .first()
+        .click();
+      await page
+        .getByText("More details · notes, receipt, shortcut", { exact: true })
         .click();
       await page.getByLabel("Save as a shortcut", { exact: false }).check();
       await page.getByRole("button", { name: "Save expense" }).click();
@@ -628,6 +631,89 @@ try {
         )
         .toBe(false);
       await device.shell("locksettings clear --old 2468");
+    },
+  );
+  await check(
+    "V3 autopay queues expected charges, confirms once and survives restart",
+    async () => {
+      await nav("Plan");
+      await page.getByRole("button", { name: "Bills", exact: true }).click();
+      await page.getByRole("button", { name: "Add bill", exact: true }).click();
+      await page.getByLabel("Bill or subscription").fill("Native autopay test");
+      await page.getByLabel("Amount", { exact: true }).fill("50");
+      await page.getByLabel("Paid automatically (Autopay)").check();
+      await page
+        .getByRole("button", { name: "Save bill", exact: true })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page
+        .locator(".expected-row")
+        .filter({ hasText: "Native autopay test" })
+        .getByRole("button", { name: "Review", exact: true })
+        .click();
+      await page.getByLabel("Actual payment amount").fill("49");
+      await page
+        .getByRole("button", { name: "Confirm paid", exact: true })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await device.shell("am force-stop " + pkg);
+      await launch();
+      await expect(page.locator(".balance-card h2")).toHaveText("₹9,827.55");
+      await nav("Plan");
+      await page.getByRole("button", { name: "Bills", exact: true }).click();
+      await expect(page.locator(".recurring-hub")).toContainText(
+        "You’re all caught up",
+      );
+      await device.screenshot({ path: out + "/08-autopay.png" });
+    },
+  );
+  await check(
+    "Opaque light chrome and repeated sheet open-close retain usable scrolling",
+    async () => {
+      await page
+        .getByRole("button", { name: "Open settings", exact: true })
+        .click();
+      if (
+        await page
+          .getByRole("button", { name: "Switch to light", exact: true })
+          .count()
+      )
+        await page
+          .getByRole("button", { name: "Switch to light", exact: true })
+          .click();
+      await nav("Overview");
+      const chrome = await page
+        .locator(".topbar")
+        .evaluate((e) => ({
+          color: getComputedStyle(e).backgroundColor,
+          filter: getComputedStyle(e).backdropFilter,
+        }));
+      assert.equal(chrome.filter, "none");
+      assert.ok(!chrome.color.includes("rgba"));
+      await device.screenshot({ path: out + "/09-clean-light-header.png" });
+      for (let i = 0; i < 3; i++) {
+        await page
+          .getByRole("button", { name: "Add transaction", exact: true })
+          .filter({ visible: true })
+          .first()
+          .click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        if (i === 0)
+          await device.screenshot({ path: out + "/10-clean-entry.png" });
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+      }
+      assert.notEqual(
+        await page.evaluate(() => document.body.style.overflow),
+        "hidden",
+      );
+      await nav("Plan");
+      await page
+        .getByRole("button", { name: "Spend check", exact: true })
+        .click();
+      await page.getByLabel("Planned purchase amount").fill("1000");
+      await expect(page.locator(".spend-result")).toBeVisible();
+      await device.screenshot({ path: out + "/11-spending-check.png" });
     },
   );
   await check("No uncaught WebView JavaScript errors", async () =>

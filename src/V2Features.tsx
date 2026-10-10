@@ -344,6 +344,7 @@ export function CategorySettings({ s, onSave }: { s: State; onSave: Save }) {
         ...s.transactions,
         ...(s.shortcuts || []),
         ...s.bills,
+        ...(s.expectedPayments || []),
         ...s.rules,
         ...s.budgets,
       ].some((x) => x.category === c.id) ||
