@@ -10,6 +10,7 @@ import {
   nextDue,
   parseCSV,
   payBill,
+  money,
   totals,
   validateState,
   type Transaction,
@@ -28,6 +29,17 @@ const t = (extra: Partial<Transaction> = {}): Transaction => ({
   ...extra,
 });
 describe("money accuracy", () => {
+  it("keeps currency, whole amounts, fractions and compact displays distinct", () => {
+    for (let i = 0; i < 3; i++) {
+      expect(money(12345600)).toBe("₹1,23,456");
+      expect(money(150)).toBe("₹1.50");
+      expect(money(100)).toBe("₹1");
+      expect(money(-150, "USD")).toBe("-$1.50");
+      expect(money(100, "USD")).toBe("$1");
+      expect(money(12345000, "USD", true)).toBe("$123.5K");
+      expect(money(12345000, "USD")).toBe("$123,450");
+    }
+  });
   it("uses integer minor units and rejects invalid monetary input", () => {
     expect(cents("123.45")).toBe(12345);
     expect(cents("0.01")).toBe(1);

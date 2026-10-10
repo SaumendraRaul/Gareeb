@@ -163,15 +163,25 @@ export const uid = () => crypto.randomUUID();
 export const day = (date = new Date()) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 export const month = (date = new Date()) => day(date).slice(0, 7);
-export const money = (cents: number, currency = "INR", compact = false) =>
-  new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: cents % 100 ? 2 : 0,
-    ...(compact
-      ? { notation: "compact" as const, maximumFractionDigits: 1 }
-      : {}),
-  }).format(cents / 100);
+const moneyFormats = new Map<string, Intl.NumberFormat>();
+export function money(cents: number, currency = "INR", compact = false) {
+  const digits = compact ? 1 : cents % 100 ? 2 : 0;
+  const key = `${currency}:${compact}:${digits}`;
+  let formatter = moneyFormats.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: digits,
+      ...(compact ? { notation: "compact" as const } : {}),
+    });
+    // Formatting repeats across every card and row when a sheet opens. Reuse
+    // the formatter without allowing arbitrary currency changes to grow memory.
+    if (moneyFormats.size >= 32) moneyFormats.clear();
+    moneyFormats.set(key, formatter);
+  }
+  return formatter.format(cents / 100);
+}
 export function cents(value: string) {
   if (!/^\d+(\.\d{1,2})?$/.test(value.trim()))
     throw new Error("Enter an amount with up to 2 decimal places.");
