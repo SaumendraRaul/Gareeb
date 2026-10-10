@@ -698,8 +698,19 @@ try {
           .first()
           .click();
         await expect(page.getByRole("dialog")).toBeVisible();
-        if (i === 0)
+        if (i === 0) {
+          // DOM visibility can precede the WebView compositor's first frame.
+          // Capture the settled sheet, not the screen behind its entrance.
+          await page.getByRole("dialog").evaluate(async (element) => {
+            await Promise.allSettled(
+              element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+            );
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          });
+          await page.waitForTimeout(300);
+          await expect(page.getByRole("dialog")).toBeVisible();
           await device.screenshot({ path: out + "/10-clean-entry.png" });
+        }
         await page.keyboard.press("Escape");
         await expect(page.getByRole("dialog")).toHaveCount(0);
       }
