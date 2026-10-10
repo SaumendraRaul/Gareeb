@@ -2,7 +2,7 @@ import { collectExpected } from "./v3";
 import { SpendCheck, RecurringHub } from "./V3Features";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { App as NativeApp } from "@capacitor/app";
-import { Capacitor, SystemBars, SystemBarsStyle } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import {
   available,
@@ -58,6 +58,9 @@ import { PrivacySettings, UnlockBackup } from "./Privacy";
 import { syncReminders } from "./reminders";
 import { budgetWindow } from "./v2";
 type Tab = "home" | "activity" | "insights" | "plan" | "wallets" | "settings";
+const NativeAppearance = registerPlugin<{
+  setTheme(options: { dark: boolean }): Promise<void>;
+}>("GareebAppearance");
 type Confirmation = {
   title: string;
   description: string;
@@ -121,14 +124,11 @@ export default function App() {
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = s?.settings.theme || "light";
-    if (Capacitor.isNativePlatform())
-      void SystemBars.setStyle({
-        style:
-          s?.settings.theme === "dark"
-            ? SystemBarsStyle.Dark
-            : SystemBarsStyle.Light,
+    if (Capacitor.isNativePlatform() && loaded)
+      void NativeAppearance.setTheme({
+        dark: s?.settings.theme === "dark",
       }).catch(() => {});
-  }, [s?.settings.theme]);
+  }, [s?.settings.theme, loaded]);
   useEffect(() => {
     configureHaptics(s?.settings.haptics !== false);
     document.documentElement.dataset.motion = s?.settings.reducedMotion

@@ -3,6 +3,7 @@ import { expect } from "@playwright/test";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import sharp from "sharp";
 
 const out = "work/android-qa";
 await mkdir(out, { recursive: true });
@@ -77,6 +78,17 @@ async function nav(name) {
     .getByRole("navigation", { name: "Mobile navigation" })
     .getByRole("button", { name, exact: true })
     .click();
+}
+async function expectSystemBarBackground(color) {
+  // Read rendered device pixels, not only the WebView's CSS theme.
+  await expect.poll(async () => {
+    const { data, info } = await sharp(await device.screenshot()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const x = Math.floor(info.width / 2);
+    return [5, info.height - 5].map((y) => {
+      const offset = (y * info.width + x) * info.channels;
+      return Array.from(data.subarray(offset, offset + 3));
+    });
+  }, { timeout: 15000, message: "Native system bars must match the app theme" }).toEqual([color, color]);
 }
 try {
   report.device = {
@@ -318,6 +330,7 @@ try {
       page.getByRole("heading", { name: "Hey Android QA" }),
     ).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expectSystemBarBackground([21, 30, 25]);
     await device.screenshot({ path: out + "/03-dark.png" });
   });
   await check(
@@ -690,6 +703,7 @@ try {
         }));
       assert.equal(chrome.filter, "none");
       assert.ok(!chrome.color.includes("rgba"));
+      await expectSystemBarBackground([247, 248, 242]);
       await device.screenshot({ path: out + "/09-clean-light-header.png" });
       for (let i = 0; i < 3; i++) {
         await page
