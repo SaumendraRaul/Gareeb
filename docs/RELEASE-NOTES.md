@@ -1,3 +1,15 @@
+Gareeb v3.0.1 — smoother sheets and better form alignment.
+
+Download **gareeb-android.apk** below and install over your current v3 app.
+
+- Fixed a downward swipe reversing upward before the sheet closed.
+- Separated the dimmed background from the opaque sheet animation, with stable viewport sizing before opening.
+- Kept keyboard resizing from shifting the sheet during dismissal.
+- Deferred balance/chart updates until the save animation finishes.
+- Aligned the Spend check amount and planning controls, with full-width stacked fields on small phones and matching control heights.
+- Preserved haptics, reduced motion, app lock and all existing records.
+
+---
 Gareeb v3.0 — clearer money, calmer screens.
 
 Download **gareeb-android.apk** below. Update over builds 7 and later; the signing identity and existing records remain compatible.

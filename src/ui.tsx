@@ -237,31 +237,41 @@ function closeSheet(backdrop: HTMLElement): Promise<void> {
   const existing = closingSheets.get(backdrop);
   if (existing) return existing;
   const sheet = backdrop.querySelector<HTMLElement>(".modal");
+  const scrim = backdrop.querySelector<HTMLElement>(".modal-scrim");
   if (!sheet || reducedMotion() || !backdrop.getClientRects().length)
     return Promise.resolve();
-  const computed = getComputedStyle(sheet);
-  const transform = computed.transform,
-    opacity = computed.opacity;
+  const transform = getComputedStyle(sheet).transform;
+  const scrimOpacity = scrim ? getComputedStyle(scrim).opacity : "1";
+  const mobile = window.matchMedia("(max-width: 700px)").matches;
+  // Freeze the layout before blurring a focused input: keyboard resize events
+  // must not move the closing sheet's base position halfway through its exit.
+  backdrop.dataset.phase = "closing";
+  const height = sheet.offsetHeight;
+  sheet.style.height = `${height}px`;
+  sheet.style.maxHeight = "none";
   for (const animation of sheet.getAnimations()) animation.cancel();
-  for (const animation of backdrop.getAnimations()) animation.cancel();
+  for (const animation of scrim?.getAnimations() || []) animation.cancel();
   backdrop.style.pointerEvents = "auto";
   sheet.style.pointerEvents = "none";
+  sheet.style.willChange = "transform";
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && sheet.contains(active)) active.blur();
   const result = Promise.all([
     sheet
       .animate(
         [
-          { transform, opacity },
+          { transform, opacity: 1 },
           {
-            transform: `translate3d(0,${Math.min(sheet.offsetHeight, 100)}px,0)`,
-            opacity: 0,
+            transform: `translate3d(0,${mobile ? height + 32 : 24}px,0)`,
+            opacity: mobile ? 1 : 0,
           },
         ],
-        { duration: 190, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
+        { duration: 230, easing: "cubic-bezier(.32,0,.67,1)", fill: "forwards" },
       )
       .finished.catch(() => {}),
-    backdrop
-      .animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: 190,
+    scrim
+      ?.animate([{ opacity: scrimOpacity }, { opacity: 0 }], {
+        duration: 230,
         fill: "forwards",
       })
       .finished.catch(() => {}),
@@ -293,6 +303,20 @@ export function Modal({
     dismissing = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const settleDrag = () => {
+    const sheet = ref.current;
+    if (!sheet) return;
+    const transform = getComputedStyle(sheet).transform;
+    sheet.getAnimations().forEach((a) => a.cancel());
+    sheet.style.setProperty("--sheet-drag", "0px");
+    const animation = sheet.animate(
+      [{ transform }, { transform: "translate3d(0,0,0)" }],
+      { duration: reducedMotion() ? 0 : 180, easing: "cubic-bezier(.2,.8,.2,1)" },
+    );
+    void animation.finished.then(() => {
+      if (drag.current === null) sheet.style.willChange = "";
+    }).catch(() => {});
+  };
   const dismiss = useCallback(async () => {
     if (dismissing.current) return;
     dismissing.current = true;
@@ -303,23 +327,66 @@ export function Modal({
   useLayoutEffect(() => {
     const sheet = ref.current,
       backdrop = backdropRef.current;
-    if (!sheet || !backdrop || reducedMotion()) return;
-    const animations = [
-      sheet.animate(
-        [
-          { transform: "translate3d(0,64px,0)", opacity: 0 },
-          { transform: "translate3d(0,0,0)", opacity: 1 },
-        ],
-        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" },
-      ),
-      backdrop.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 }),
-    ];
-    return () => animations.forEach((a) => a.cancel());
+    if (!sheet || !backdrop) return;
+    const viewport = window.visualViewport;
+    let resizeFrame = 0, startFrame = 0;
+    const animations: Animation[] = [];
+    const size = () => {
+      if (backdrop.dataset.phase === "closing") return;
+      backdrop.style.height = `${viewport?.height || window.innerHeight}px`;
+      backdrop.style.top = `${viewport?.offsetTop || 0}px`;
+    };
+    const resize = () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        if (backdrop.dataset.phase !== "opening") size();
+      });
+    };
+    // Set the viewport and scroll lock before the first rendered frame.
+    const bodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    size();
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    const scrim = backdrop.querySelector<HTMLElement>(".modal-scrim")!;
+    if (!reducedMotion()) {
+      const mobile = window.matchMedia("(max-width: 700px)").matches;
+      const from = mobile ? "translate3d(0,100%,0)" : "translate3d(0,24px,0)";
+      backdrop.dataset.phase = "opening";
+      sheet.style.transform = from;
+      sheet.style.willChange = "transform";
+      scrim.style.opacity = "0";
+      // Allow the opaque sheet to be painted in its own layer before moving it.
+      startFrame = requestAnimationFrame(() => {
+        startFrame = requestAnimationFrame(() => {
+          if (backdrop.dataset.phase !== "opening") return;
+          const slide = sheet.animate(
+            [{ transform: from }, { transform: "translate3d(0,0,0)" }],
+            { duration: 280, easing: "cubic-bezier(.22,.8,.24,1)" },
+          );
+          animations.push(slide, scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 }));
+          sheet.style.transform = "";
+          scrim.style.opacity = "";
+          void slide.finished.then(() => {
+            if (backdrop.dataset.phase !== "opening") return;
+            backdrop.dataset.phase = "open";
+            sheet.style.willChange = "";
+            size();
+          }).catch(() => {});
+        });
+      });
+    } else backdrop.dataset.phase = "open";
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      cancelAnimationFrame(startFrame);
+      cancelAnimationFrame(resizeFrame);
+      animations.forEach((a) => a.cancel());
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+    };
   }, []);
   useEffect(() => {
-    const prev = document.activeElement as HTMLElement,
-      bodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const prev = document.activeElement as HTMLElement;
     ref.current?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
       if (!ref.current?.getClientRects().length) return;
@@ -351,21 +418,8 @@ export function Modal({
       }
     };
     document.addEventListener("keydown", key);
-    const viewport = window.visualViewport;
-    const resize = () => {
-      if (backdropRef.current) {
-        backdropRef.current.style.height = `${viewport?.height || window.innerHeight}px`;
-        backdropRef.current.style.top = `${viewport?.offsetTop || 0}px`;
-      }
-    };
-    resize();
-    viewport?.addEventListener("resize", resize);
-    viewport?.addEventListener("scroll", resize);
     return () => {
-      document.body.style.overflow = bodyOverflow;
       document.removeEventListener("keydown", key);
-      viewport?.removeEventListener("resize", resize);
-      viewport?.removeEventListener("scroll", resize);
       if (prev?.isConnected) prev.focus({ preventScroll: true });
     };
   }, [dismiss]);
@@ -377,6 +431,7 @@ export function Modal({
         if (e.target === e.currentTarget) dismiss();
       }}
     >
+      <div className="modal-scrim" aria-hidden="true" />
       <div
         className="modal"
         role="dialog"
@@ -393,10 +448,16 @@ export function Modal({
             if (offset.current < 5) dismiss();
           }}
           onPointerDown={(e) => {
-            ref.current?.getAnimations().forEach((a) => a.cancel());
+            if (dismissing.current || !ref.current) return;
+            const current = new DOMMatrixReadOnly(getComputedStyle(ref.current).transform).m42;
+            if (backdropRef.current) backdropRef.current.dataset.phase = "open";
+            ref.current.getAnimations().forEach((a) => a.cancel());
+            ref.current.style.transform = "";
+            ref.current.style.willChange = "transform";
+            ref.current.style.setProperty("--sheet-drag", `${current}px`);
             draggingAt.current = performance.now();
-            drag.current = e.clientY;
-            offset.current = 0;
+            drag.current = e.clientY - current;
+            offset.current = current;
             e.currentTarget.setPointerCapture(e.pointerId);
           }}
           onPointerMove={(e) => {
@@ -422,24 +483,12 @@ export function Modal({
                   0.6)
             )
               void dismiss();
-            else {
-              ref.current?.animate(
-                [
-                  { transform: `translateY(${offset.current}px)` },
-                  { transform: "translateY(0)" },
-                ],
-                {
-                  duration: reducedMotion() ? 0 : 180,
-                  easing: "cubic-bezier(.2,.8,.2,1)",
-                },
-              );
-              ref.current?.style.setProperty("--sheet-drag", "0px");
-            }
+            else settleDrag();
           }}
           onPointerCancel={() => {
             drag.current = null;
             offset.current = 0;
-            ref.current?.style.setProperty("--sheet-drag", "0px");
+            settleDrag();
           }}
         >
           <span />

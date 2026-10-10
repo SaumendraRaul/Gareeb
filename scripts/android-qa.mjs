@@ -203,7 +203,7 @@ try {
     );
   if (previous && process.env.PREVIOUS_STABLE === "true")
     await check(
-      "V2 to V3 update preserves real saved records without uninstall",
+      "V3 maintenance update preserves real saved records without uninstall",
       async () => {
         await device.shell("am force-stop " + pkg);
         await install(apk, "updated");
@@ -741,6 +741,52 @@ try {
       await device.screenshot({ path: out + "/11-spending-check.png" });
     },
   );
+  await check("Long Android sheet swipe exits downward without reversing", async () => {
+    await nav("Overview");
+    await page.getByRole("button", { name: "Add transaction", exact: true }).filter({ visible: true }).first().click();
+    await expect.poll(() => page.locator(".modal-backdrop").getAttribute("data-phase")).toBe("open");
+    assert.equal(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), false);
+    const box = await page.getByRole("button", { name: "Close sheet", exact: true }).boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 220, { steps: 12 });
+    await page.evaluate(() => {
+      window.sheetFrames = [];
+      const sheet = document.querySelector(".modal");
+      const tick = (time) => {
+        if (!sheet.isConnected) return;
+        window.sheetFrames.push({ time, top: sheet.getBoundingClientRect().top });
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    report.sheetFrames = await page.evaluate(() => window.sheetFrames);
+    assert.ok(report.sheetFrames.length > 2, "Capture actual animated frames");
+    for (let i = 1; i < report.sheetFrames.length; i++)
+      assert.ok(report.sheetFrames[i].top >= report.sheetFrames[i - 1].top - 1, "Sheet must not reverse upward");
+  });
+  await check("Keyboard-open save dismisses the sheet and keeps wallet totals correct", async () => {
+    await page.getByRole("button", { name: "Add transaction", exact: true }).filter({ visible: true }).first().click();
+    await page.getByLabel("What was it for?").fill("Keyboard motion check");
+    await page.getByLabel("Amount", { exact: true }).fill("3.25");
+    await page.getByLabel("Amount", { exact: true }).click();
+    await expect.poll(async () => (await device.shell("dumpsys input_method")).toString().includes("mInputShown=true"), { timeout: 10000 }).toBe(true);
+    await page.locator(".editor-form").evaluate((form) => form.requestSubmit());
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator(".balance-card h2")).toHaveText("₹9,824.30");
+    assert.notEqual(await page.evaluate(() => document.body.style.overflow), "hidden");
+    await nav("Plan");
+    await page.getByRole("button", { name: "Spend check", exact: true }).click();
+    const amount = await page.getByLabel("Planned purchase amount").boundingBox();
+    const period = await page.getByLabel("Plan ahead").boundingBox();
+    assert.ok(Math.abs(amount.height - period.height) < 1);
+    if (Math.abs(amount.x - period.x) > 5) assert.ok(Math.abs(amount.y - period.y) < 1);
+    else assert.ok(period.y > amount.y + amount.height);
+    await device.screenshot({ path: out + "/12-aligned-spend-check.png" });
+  });
   await check("No uncaught WebView JavaScript errors", async () =>
     assert.deepEqual(report.errors, []),
   );

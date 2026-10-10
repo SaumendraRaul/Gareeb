@@ -175,11 +175,12 @@ export default function App() {
       next = collectExpected(next);
       validateState(next);
       await persist(next);
+      // Let the sheet finish before rerendering charts, totals and notices.
+      await close();
       setUndo(canUndo ? s : null);
       setS(next);
       setNotice(message);
       void feedback("success");
-      await close();
       return true;
     } catch (e) {
       setNotice("Could not save: " + (e as Error).message);
@@ -2273,7 +2274,7 @@ export default function App() {
               <Icon name="Sprout" size={15} /> A little mindful. A lot more
               free.
             </span>
-            <span>Gareeb · v3.0</span>
+            <span>Gareeb · v3.0.1</span>
           </footer>
         </main>
       </div>

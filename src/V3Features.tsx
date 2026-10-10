@@ -30,7 +30,7 @@ export function SpendCheck({ s, cash }: Omit<Props, "onSave">) {
         Check a purchase against the money you have, upcoming bills and your
         reserve.
       </p>
-      <div className="form-grid">
+      <div className="form-grid spend-controls">
         <Field label="Planned purchase amount">
           <input
             type="number"

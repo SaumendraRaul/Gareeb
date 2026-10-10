@@ -4985,12 +4985,22 @@ button:active:not(:disabled) {
 }
 .modal-backdrop {
   backdrop-filter: none;
-  background: #10251d70;
+  background: transparent;
   bottom: auto;
+  height: 100dvh;
+  isolation: isolate;
+}
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: #10251d70;
+  pointer-events: none;
 }
 .modal {
+  position: relative;
   transform: translate3d(0, var(--sheet-drag, 0px), 0);
   box-shadow: 0 12px 45px #10251d24;
+  flex-shrink: 0;
 }
 .modal header .eyebrow {
   display: none;
@@ -5003,6 +5013,10 @@ button:active:not(:disabled) {
 }
 .sheet-handle {
   touch-action: none;
+  transition: none;
+}
+.sheet-handle:active:not(:disabled) {
+  transform: none;
 }
 .v3-details {
   border: 1px solid var(--line);
@@ -5099,6 +5113,26 @@ button:active:not(:disabled) {
 }
 .spend-check .form-grid {
   margin: 24px 0;
+}
+.spend-controls {
+  align-items: end;
+}
+.spend-controls .field > span {
+  line-height: 1.4;
+}
+.spend-controls .field input,
+.spend-controls .field select {
+  height: 52px;
+  min-height: 52px;
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 12px;
+}
+@media (max-width: 440px) {
+  .spend-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
 }
 .spend-result {
   border-radius: 18px;

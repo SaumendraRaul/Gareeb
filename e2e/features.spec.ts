@@ -154,6 +154,7 @@ test("mobile sheets support drag dismissal without saving", async ({
   await add(page);
   await page.getByLabel("What was it for?").fill("Unsubmitted draft");
   const handle = page.getByRole("button", { name: "Close sheet", exact: true });
+  await handle.click({ trial: true });
   const box = await handle.boundingBox();
   expect(box).toBeTruthy();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);

@@ -39,9 +39,9 @@ jobs:
           curl -fL "https://github.com/SaumendraRaul/Gareeb/releases/download/${RELEASE_TAG}/gareeb-android.apk.sha256" -o gareeb-android.apk.sha256
           sha256sum -c gareeb-android.apk.sha256
           mv gareeb-android.apk released.apk
-          if [[ "$RELEASE_TAG" != 'android-build-10' ]]; then
-            curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-10/gareeb-android.apk -o previous.apk
-            echo '1494181de4e34be5a9e7a9e8440ffe00be8179c311e434a2ec8abe6473d87bd0  previous.apk' | sha256sum -c -
+          if [[ "$RELEASE_TAG" != 'android-build-12' ]]; then
+            curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-12/gareeb-android.apk -o previous.apk
+            echo 'c51f39eb3c48aac1cbb0da27028775ddb445bb93bee83dd8166232d1e8e6bffd  previous.apk' | sha256sum -c -
           fi
       - name: Enable hardware acceleration
         run: |
@@ -55,7 +55,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disable-animations: true
+          disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: node scripts/android-qa.mjs
       - uses: actions/upload-artifact@v4
