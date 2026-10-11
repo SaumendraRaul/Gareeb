@@ -78,6 +78,12 @@ async function nav(name) {
     .getByRole("navigation", { name: "Mobile navigation" })
     .getByRole("button", { name, exact: true })
     .click();
+  const main = page.locator("main.content");
+  if (await main.getAttribute("data-view")) {
+    const view = { Overview: "home", Activity: "activity", Insights: "insights", Plan: "plan", Wallets: "wallets" }[name];
+    await expect(main).toHaveAttribute("data-view", view);
+    await expect.poll(async () => (await main.getAttribute("data-phase")) || "idle").toBe("idle");
+  }
 }
 async function expectSystemBarBackground(color) {
   // Read rendered device pixels, not only the WebView's CSS theme.
@@ -195,7 +201,7 @@ try {
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-        await expect(page.locator(".page-footer")).toContainText("v3.0");
+        await expect(page.locator(".page-footer")).toContainText("v4.0");
         await expect(
           page.getByRole("region", { name: "Transaction shortcuts" }),
         ).toBeVisible();
@@ -203,7 +209,7 @@ try {
     );
   if (previous && process.env.PREVIOUS_STABLE === "true")
     await check(
-      "V3 maintenance update preserves real saved records without uninstall",
+      "V4 update preserves real saved records without uninstall",
       async () => {
         await device.shell("am force-stop " + pkg);
         await install(apk, "updated");
@@ -212,7 +218,7 @@ try {
           page.getByRole("heading", { name: "Hey Android QA" }),
         ).toBeVisible();
         await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-        await expect(page.locator(".page-footer")).toContainText("v3.0");
+        await expect(page.locator(".page-footer")).toContainText("v4.0");
       },
     );
   await check("Stable-signed replacement preserves saved records", async () => {
@@ -223,7 +229,7 @@ try {
       page.getByRole("heading", { name: "Hey Android QA" }),
     ).toBeVisible();
     await expect(page.locator(".balance-card h2")).toHaveText("₹9,876.55");
-    await expect(page.locator(".page-footer")).toContainText("v3.0");
+    await expect(page.locator(".page-footer")).toContainText("v4.0");
   });
   await check(
     "Force-stop and offline relaunch retain the saved expense",
@@ -686,6 +692,7 @@ try {
       await page
         .getByRole("button", { name: "Open settings", exact: true })
         .click();
+      await expect(page.locator("main.content")).toHaveAttribute("data-view", "settings");
       if (
         await page
           .getByRole("button", { name: "Switch to light", exact: true })
@@ -786,6 +793,45 @@ try {
     if (Math.abs(amount.x - period.x) > 5) assert.ok(Math.abs(amount.y - period.y) < 1);
     else assert.ok(period.y > amount.y + amount.height);
     await device.screenshot({ path: out + "/12-aligned-spend-check.png" });
+  });
+  await check("Animated navigation settles on the last tap and highlights stay aligned", async () => {
+    await nav("Overview");
+    report.navigationFrames = await page.evaluate(async () => {
+      const main = document.querySelector("main.content");
+      const nav = document.querySelector(".bottom-nav");
+      const samples = [];
+      [...nav.querySelectorAll("button")].find(b => b.textContent.trim() === "Activity").click();
+      await new Promise((resolve, reject) => {
+        let count = 0;
+        const tick = () => {
+          samples.push({ phase: main.dataset.phase, opacity: Number(getComputedStyle(main).opacity) });
+          if (main.dataset.view === "activity" && main.dataset.phase === "idle") return resolve();
+          if (++count > 240) return reject(Error("Navigation never settled"));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      return samples;
+    });
+    assert.ok(report.navigationFrames.some(f => f.phase === "exiting"));
+    assert.ok(report.navigationFrames.some(f => f.phase === "entering"));
+    await page.locator(".bottom-nav").evaluate(async el => {
+      for (const name of ["Plan", "Insights", "Wallets"]) {
+        [...el.querySelectorAll("button")].find(b => b.textContent.trim() === name).click();
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    });
+    await expect(page.locator("main.content")).toHaveAttribute("data-view", "wallets");
+    await expect(page.locator("main.content")).toHaveAttribute("data-phase", "idle");
+    assert.equal(await page.locator("[inert]").count(), 0);
+    await expect.poll(() => page.locator(".bottom-nav").evaluate(el => {
+      const button = el.querySelector("button.active").getBoundingClientRect();
+      const pill = el.querySelector(".moving-highlight").getBoundingClientRect();
+      return Math.max(Math.abs(button.x - pill.x), Math.abs(button.width - pill.width));
+    })).toBeLessThan(2);
+    await device.screenshot({ path: out + "/13-v4-navigation.png" });
+    await nav("Overview");
+    await expect(page.locator(".balance-card h2")).toHaveText("₹9,824.30");
   });
   await check("No uncaught WebView JavaScript errors", async () =>
     assert.deepEqual(report.errors, []),

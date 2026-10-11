@@ -39,9 +39,9 @@ jobs:
           curl -fL "https://github.com/SaumendraRaul/Gareeb/releases/download/${RELEASE_TAG}/gareeb-android.apk.sha256" -o gareeb-android.apk.sha256
           sha256sum -c gareeb-android.apk.sha256
           mv gareeb-android.apk released.apk
-          if [[ "$RELEASE_TAG" != 'android-build-12' ]]; then
-            curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-12/gareeb-android.apk -o previous.apk
-            echo 'c51f39eb3c48aac1cbb0da27028775ddb445bb93bee83dd8166232d1e8e6bffd  previous.apk' | sha256sum -c -
+          if [[ "$RELEASE_TAG" != 'android-build-14' ]]; then
+            curl -fL https://github.com/SaumendraRaul/Gareeb/releases/download/android-build-14/gareeb-android.apk -o previous.apk
+            echo 'e7c163dfc491712a94d1c58d8918ca754a05f1d3e597711abe76773937d9db24  previous.apk' | sha256sum -c -
           fi
       - name: Enable hardware acceleration
         run: |

@@ -1,3 +1,4 @@
+import { MovingHighlight, useMotionView, useButtonMotion } from "./motion";
 import { collectExpected } from "./v3";
 import { SpendCheck, RecurringHub } from "./V3Features";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -74,11 +75,16 @@ const nav: [Tab, string, string][] = [
   ["plan", "Target", "Plan"],
   ["wallets", "Wallet", "Wallets"],
 ];
+const tabOrder: Tab[] = ["home", "activity", "insights", "plan", "wallets", "settings"];
+const planOrder = ["Budgets", "Goals", "Bills", "Together", "Spend check"];
+const activityOrder = ["list", "calendar"];
 export default function App() {
+  useButtonMotion();
   const [s, setS] = useState<State | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [bootError, setBootError] = useState("");
-  const [tab, setTab] = useState<Tab>("home");
+  const pageMotion = useMotionView<Tab, HTMLElement>("home", tabOrder, true);
+  const { value: tab, target: activeTab, select: setTab } = pageMotion;
   const [selected, setSelected] = useState(month());
   const [editor, setEditor] = useState<Editor | null>(null);
   const [confirm, setConfirm] = useState<Confirmation | null>(null);
@@ -92,8 +98,10 @@ export default function App() {
   const [accountFilter, setAccountFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState("");
-  const [activityView, setActivityView] = useState("list");
-  const [planTab, setPlanTab] = useState("Budgets");
+  const activityMotion = useMotionView("list", activityOrder);
+  const { value: activityView, select: setActivityView } = activityMotion;
+  const planMotion = useMotionView("Budgets", planOrder);
+  const { value: planTab, select: setPlanTab } = planMotion;
   const [showAlerts, setShowAlerts] = useState(false);
   const [importPreview, setImportPreview] = useState<{
     transactions: Transaction[];
@@ -239,7 +247,6 @@ export default function App() {
   }, []);
   function go(next: Tab) {
     setTab(next);
-    window.scrollTo({ top: 0, behavior: "instant" });
   }
   const cash = (n: number, compact = false) =>
     hide ? "••••" : money(n, s?.settings.currency || "INR", compact);
@@ -644,11 +651,13 @@ export default function App() {
       <aside className="sidebar">
         <Logo />
         <span className="sidebar-caption">MAKE ROOM FOR MORE.</span>
-        <nav aria-label="Main navigation">
+        <nav className="motion-tabs" aria-label="Main navigation">
+          <MovingHighlight selection={activeTab} />
           {nav.map(([id, icon, label]) => (
             <button
               key={id}
-              className={tab === id ? "active" : ""}
+              className={activeTab === id ? "active" : ""}
+              aria-current={activeTab === id ? "page" : undefined}
               onClick={() => go(id)}
             >
               <Icon name={icon} />
@@ -725,7 +734,7 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main className="content" key={tab}>
+        <main className="content" ref={pageMotion.ref} data-view={tab}>
           {s.demo && (
             <div className="demo-banner">
               <span>
@@ -1127,14 +1136,15 @@ export default function App() {
           {tab === "activity" && (
             <>
               <div
-                className="activity-view segmented"
+                className="activity-view segmented motion-tabs"
                 aria-label="Activity view"
               >
-                {["list", "calendar"].map((view) => (
+                <MovingHighlight selection={activityMotion.target} />
+                {activityOrder.map((view) => (
                   <button
                     key={view}
-                    className={activityView === view ? "selected" : ""}
-                    aria-pressed={activityView === view}
+                    className={activityMotion.target === view ? "selected" : ""}
+                    aria-pressed={activityMotion.target === view}
                     onClick={() => {
                       setActivityView(view);
                       setDateFilter("");
@@ -1148,6 +1158,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              <div className="motion-panel" ref={activityMotion.ref} data-view={activityView}>
               {activityView === "calendar" && (
                 <SpendCalendar
                   s={s}
@@ -1317,6 +1328,7 @@ export default function App() {
                 Transfers move money between wallets and are excluded from
                 income and expense totals.
               </p>
+              </div>
             </>
           )}
           {tab === "insights" && (
@@ -1527,12 +1539,14 @@ export default function App() {
           {tab === "plan" && (
             <>
               <div className="plan-toolbar">
-                <div className="segmented plan-tabs">
-                  {["Budgets", "Goals", "Bills", "Together", "Spend check"].map(
+                <div className="segmented plan-tabs motion-tabs">
+                  <MovingHighlight selection={planMotion.target} />
+                  {planOrder.map(
                     (t) => (
                       <button
                         key={t}
-                        className={planTab === t ? "selected" : ""}
+                        className={planMotion.target === t ? "selected" : ""}
+                        aria-pressed={planMotion.target === t}
                         onClick={() => setPlanTab(t)}
                       >
                         {t}
@@ -1542,6 +1556,7 @@ export default function App() {
                 </div>
                 {planTab === "Budgets" && monthPicker}
               </div>
+              <div className="motion-panel" ref={planMotion.ref} data-view={planTab}>
               {planTab === "Spend check" && <SpendCheck s={s} cash={cash} />}
               {planTab === "Budgets" && (
                 <SmartBudgets
@@ -1927,6 +1942,7 @@ export default function App() {
                   </p>
                 </Section>
               )}
+              </div>
             </>
           )}
           {tab === "wallets" && (
@@ -2274,7 +2290,7 @@ export default function App() {
               <Icon name="Sprout" size={15} /> A little mindful. A lot more
               free.
             </span>
-            <span>Gareeb · v3.0.1</span>
+            <span>Gareeb · v4.0.0</span>
           </footer>
         </main>
       </div>
@@ -2287,12 +2303,14 @@ export default function App() {
           <Icon name="Plus" size={27} />
         </button>
       )}
-      <nav className="bottom-nav" aria-label="Mobile navigation">
+      <nav className="bottom-nav motion-tabs" aria-label="Mobile navigation">
+        <MovingHighlight selection={activeTab} />
         {nav.map(([id, icon, label]) => (
           <button
             key={id}
             onClick={() => go(id)}
-            className={tab === id ? "active" : ""}
+            className={activeTab === id ? "active" : ""}
+            aria-current={activeTab === id ? "page" : undefined}
           >
             <Icon name={icon} size={21} />
             <span>{label}</span>

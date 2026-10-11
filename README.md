@@ -91,3 +91,7 @@ Shared groups now support percentage/weighted splits, receipts, per-person histo
 Autopay generates **expected** payments when the app opens/resumes, not bank-confirmed transactions or background charges. Confirmation creates the actual wallet entry. Existing backups remain compatible. V3 checks cover occurrence deduplication, missed renewals, confirmed vs expected balances, exact weighted rounding, own-share duplicate prevention, and trial reminder privacy. Native testing upgrades from build 12 and checks light chrome, repeated sheets and the payment inbox.
 
 V3.0.1 fixes sheet swipe reversal and keyboard-close layout jumps. The sheet and background animate independently; Spend check uses aligned controls that stack on narrow screens. Android QA keeps animations enabled and checks a long swipe plus a save with the real keyboard open.
+
+## V4
+
+V4 focuses on UI feedback: directional screen and subtab transitions, sliding navigation highlights, and touch/keyboard press-and-release animations. Latest-tap navigation cancels stale transitions, reduced motion skips movement, and sheets retain the V3.0.1 keyboard/swipe fixes. No new finance features or data-format changes.

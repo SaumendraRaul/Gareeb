@@ -1,3 +1,16 @@
+Gareeb v4.0 — a more responsive everyday UI.
+
+Download **gareeb-android.apk** and install over your current app.
+
+- Directional exit and entry transitions for the main screens, Plan tabs and Activity views.
+- A sliding selection highlight in bottom navigation, the desktop sidebar and transaction type controls.
+- Touch and keyboard button press/release feedback that does not delay actions.
+- Rapid tab changes resolve to the last tap; repeating the current tab does not restart the page.
+- Removed competing card entrance animations, retained the sheet swipe and keyboard fixes.
+- System and in-app reduced motion preferences are respected.
+- Existing features, stored records, haptics and update signing remain unchanged.
+
+---
 Gareeb v3.0.1 — smoother sheets and better form alignment.
 
 Download **gareeb-android.apk** below and install over your current v3 app.

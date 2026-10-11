@@ -4160,26 +4160,11 @@ button {
 button:active:not(:disabled) {
   transform: scale(0.965);
 }
-.content {
-  animation: page-arrive 0.36s var(--ease-out);
-}
-.content > .panel,
-.content > .overview-grid,
-.content > .dashboard-columns {
-  animation: card-arrive 0.45s var(--ease-out) both;
-}
-.content > :nth-child(4) {
-  animation-delay: 0.025s;
-}
-.content > :nth-child(5) {
-  animation-delay: 0.05s;
-}
 .balance-card {
   isolation: isolate;
   box-shadow: 0 14px 40px #173e3319;
 }
 .balance-amount {
-  animation: amount-arrive 0.36s var(--ease-out);
   font-variant-numeric: tabular-nums;
 }
 .balance-art {
@@ -5360,4 +5345,92 @@ button:active:not(:disabled) {
 .pending-summary small {
   font-size: 12px;
   margin-top: 5px;
+}
+/* V4 motion: one moving view and one selection indicator, without card cascades. */
+.main-shell {
+  overflow-x: clip;
+}
+.motion-panel {
+  min-width: 0;
+  display: flow-root;
+}
+.motion-tabs {
+  isolation: isolate;
+}
+.motion-tabs:not(.bottom-nav) {
+  position: relative;
+}
+.moving-highlight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: -1;
+  transform-origin: 0 0;
+  background: var(--mint);
+  border-radius: 12px;
+  opacity: 0;
+}
+.segmented .moving-highlight {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 2px 6px #1636290c;
+}
+.motion-tabs > button {
+  position: relative;
+  z-index: 0;
+}
+.segmented.motion-tabs button.selected,
+.sidebar .motion-tabs button.active {
+  background: transparent;
+  box-shadow: none;
+}
+.bottom-nav.motion-tabs button.active::before {
+  content: none;
+}
+.bottom-nav.motion-tabs button.active svg {
+  animation: none;
+}
+.bottom-nav .moving-highlight {
+  border-radius: 16px;
+}
+button:active:not(:disabled) {
+  transform: none;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .motion-tabs button:hover:not(.active):not(.selected) {
+    background: color-mix(in srgb, var(--mint) 55%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+}
+:root[data-motion="reduced"] button { transition: none; }
+/* Keep all Plan destinations readable, including on a 320px screen. */
+.plan-tabs.motion-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  overflow: visible;
+}
+.plan-tabs.motion-tabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 2px;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+:root[data-theme="dark"] {
+  --muted: #a0afa3;
 }

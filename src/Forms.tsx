@@ -1,3 +1,4 @@
+import { MovingHighlight } from "./motion";
 import { useState, type FormEvent } from "react";
 import {
   allCategories,
@@ -297,7 +298,8 @@ export function EditorForm({
     <form onSubmit={save} className="editor-form">
       {editor.type === "transaction" && (
         <>
-          <div className="segmented">
+          <div className="segmented motion-tabs">
+            <MovingHighlight selection={kind} />
             {(["expense", "income", "transfer"] as Kind[]).map((k) => (
               <button
                 type="button"
