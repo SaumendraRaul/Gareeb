@@ -168,13 +168,13 @@ export default function App() {
       if (document.querySelector('[role="dialog"]'))
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
       else if (editor || confirm || showAlerts || importPreview) close();
-      else if (tab !== "home") setTab("home");
+      else if (activeTab !== "home") setTab("home");
       else void NativeApp.minimizeApp();
     });
     return () => {
       void listener.then((l) => l.remove());
     };
-  }, [editor, confirm, showAlerts, importPreview, tab, close]);
+  }, [editor, confirm, showAlerts, importPreview, activeTab, close, setTab]);
   async function save(next: State, message = "Saved", canUndo = true) {
     if (lock.current) return false;
     lock.current = true;
