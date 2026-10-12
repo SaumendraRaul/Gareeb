@@ -487,10 +487,15 @@ try {
       await expect(page.locator(".privacy-settings")).toContainText(
         "1 private bill reminders scheduled.",
       );
-      const pending = await page.evaluate(() =>
-        window.Capacitor.Plugins.LocalNotifications.getPending(),
-      );
-      assert.equal(pending.notifications.length, 1);
+      // Saving the preference also triggers App's queued reminder refresh.
+      // The native queue is briefly empty between cancel and reschedule.
+      let pending;
+      await expect.poll(async () => {
+        pending = await page.evaluate(() =>
+          window.Capacitor.Plugins.LocalNotifications.getPending(),
+        );
+        return pending.notifications.length;
+      }, { timeout: 10000 }).toBe(1);
       assert.equal(
         pending.notifications[0].title,
         "A little reminder from Gareeb",
@@ -501,14 +506,11 @@ try {
       await expect(page.locator(".privacy-settings")).toContainText(
         "Bill reminders disabled.",
       );
-      assert.equal(
-        (
-          await page.evaluate(() =>
-            window.Capacitor.Plugins.LocalNotifications.getPending(),
-          )
-        ).notifications.length,
-        0,
-      );
+      await expect.poll(async () => (
+        await page.evaluate(() =>
+          window.Capacitor.Plugins.LocalNotifications.getPending(),
+        )
+      ).notifications.length, { timeout: 10000 }).toBe(0);
     },
   );
   await check(
